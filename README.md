@@ -18,7 +18,7 @@ These are Frames Per Second values computed in the program itself.
 They are read directly from the [screenshots](#screenshots). All FPS values here are stable. Min/Max frame times will also be added.
 
 | Example | CPU-Card-Driver-platform-os | C++ | Python |
-|---------|-----|--------|
+|---------|-----------------------------|-----|--------|
 | triangle | i3 3220T-IGP-Intel Ivybridge-XCB-linux |798 | 757 |
 | triangle (imgui) | i3 3220T-IGP-Intel Ivybridge-XCB-linux |637 | 427 |
 
@@ -48,7 +48,8 @@ pip3 install xcffib --user
 ```
 - install [python glm binding](https://github.com/Zuzu-Typ/PyGLM)
 ```
-pip3 install pyglm --user  ```
+pip3 install pyglm --user  
+```
 - install [python imgui binding](https://github.com/swistakm/pyimgui)
 ```
 pip3 install imgui --user
