@@ -66,12 +66,14 @@ pip3 install pywayland --user
 These are comparative screenshots of the original examples written in C++ and the ones here written in Python.
 
 - Core i3-3220T, IGP, Intel Ivybridge, XCB, linux
+
 |Example | C++ | Python |
 |--------|-----|--------|
 |triangle | ![](figs/triangle_cpp.png) | ![](figs/triangle_python.png) |
 |triangle (imgui) | ![](figs/triangle_imgui_cpp.png) | ![](figs/triangle_imgui_python.png) |
 
 - Pentium G4400, GTX950, nvidia proprietary, XCB, linux
+
 |Example | C++ | Python |
 |--------|-----|--------|
 |triangle | ![](figs/gtx950/triangle_cpp.png) | ![](figs/gtx950/triangle_python.png) |
