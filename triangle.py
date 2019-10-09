@@ -564,6 +564,9 @@ This allows to generate work upfront and from multiple threads, one of the bigge
                 # Set target frame buffer
                 framebuffer = self.frameBuffers[i]
             )
+            # wait this buffer to be released
+            vk.vkWaitForFences(self.device, 1, [self.waitFences[i]], vk.VK_TRUE, vk.UINT64_MAX)
+            # rebuild this buffer
             vk.vkBeginCommandBuffer(self.drawCmdBuffers[i], cmdBufInfo)
             # Start the first sub pass specified in our default render pass setup by the base class
             # This will clear the color and depth attachment
@@ -648,7 +651,7 @@ This allows to generate work upfront and from multiple threads, one of the bigge
         self.draw()
         # this one is required
         # uncomment for imgui support
-        vk.vkDeviceWaitIdle(self.device)
+        #vk.vkDeviceWaitIdle(self.device)
 
     def viewChanged(self):
         self.updateUniformBuffers()
