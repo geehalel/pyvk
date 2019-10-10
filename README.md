@@ -24,6 +24,8 @@ They are read directly from the [screenshots](#screenshots). All FPS values here
 | triangle | Pentium G4400-GTX950-nvidia proprietary-XCB-linux |4794 | 4279 |
 | triangle (imgui) | Pentium G4400-GTX950-nvidia proprietary-XCB-linux |4712 | 2561 |
 
+**Note**: All C++ examples were run without validation enabled, whereas Python examples were run with validation enbled. This explains the large differences in figures above. I will run again the examples in both cases.
+
 ### Running the example(s)
 *First install the requirements (see [below](#installation-requirements)).
 At the moment I also use [numpy](https://numpy.org/) as a mean to access C arrays from Python, thus you should also install it (`pip3 install --user numpy`).*
@@ -60,6 +62,29 @@ pip3 install imgui --user
 ```
 pip3 install pywayland --user
 ```
+
+  ##### 3D Model loading
+  Install the [`assimp` python port](https://github.com/assimp/assimp) from your distribution (`python3-pyassimp`) or from `Pypi`.
+  ```
+  apt-get install python3-pyassimp
+  ```
+
+  ##### Textures loading
+  The tutorials mainly use the Khronos groupe `ktx` format for storing textures,
+but this format is not installed on Linux (no packages on Ubuntu and Fedora).
+Here are some links about this format:
+  - [`KTX` File format specification](https://www.khronos.org/opengles/sdk/tools/KTX/file_format_spec/)
+  - [The Khronos Group Library and Tools](https://github.com/KhronosGroup/KTX-Software) which contains source code for `libktx` library
+  - [OpenGL Image](http://gli.g-truc.net/0.8.2/index.html) (`gli`) library, C++ header only, used in the tutorials
+
+  There is otherwise numerous image library in Python, none of them reading `ktx` files, but some of them reading `dds` files (Microsoft texture file format).
+  - [Pillow, the Python Image Library](https://github.com/python-pillow/Pillow)
+  - [OpenImageIO](https://github.com/OpenImageIO/oiio) which supports image formats used in VFX (visual effects for films/TV) and embeds an ImageCache framework. Supports Python directly. On Ubuntu the Python support is only packaged for Python 2.7 (`python-openimageio`). For Python 3, a [package](https://github.com/fredrikaverpil/oiio-python) may be manually installed:
+  ```
+  wget https://github.com/fredrikaverpil/oiio-python/releases/download/2.0.5%2B20190203/oiio-2.0.5-cp36-none-linux_x86_64.whl
+  pip3 install --user oiio-2.0.5-cp36-none-linux_x86_64.whl
+  ```
+  Check your Python version, there is also a wheel for Python 3.7.
 
 ### Screenshots
 
