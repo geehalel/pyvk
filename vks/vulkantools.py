@@ -41,7 +41,7 @@ def loadShader(filename, device):
     return shaderModule
 
 def setImageLayoutsubResource(cmdBuffer, image, oldImageLayout, newImageLayout,
-    subresourceRange, srcStageMask, dstStageMask):
+    subresourceRange, srcStageMask = vk.VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, dstStageMask = vk.VK_PIPELINE_STAGE_ALL_COMMANDS_BIT):
     """
 Create an image memory barrier for changing the layout of
 an image and put it into an active command buffer
@@ -121,7 +121,7 @@ See chapter 11.4 "Image Layout" for details
         pass
     vk.vkCmdPipelineBarrier(cmdBuffer, srcStageMask, dstStageMask, 0, 0, None, 0, None, 1, imageMemoryBarrier)
 # Fixed sub resource on first mip level and layer
-def setImageLayout(cmdBuffer, image, aspectMask, oldImageLayout, newImageLayout, srcStageMask, dstStageMask):
+def setImageLayout(cmdBuffer, image, aspectMask, oldImageLayout, newImageLayout, srcStageMask = vk.VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, dstStageMask = vk.VK_PIPELINE_STAGE_ALL_COMMANDS_BIT):
     subresourceRange = vk.VkImageSubresourceRange(
         aspectMask = aspectMask,
         baseMipLevel = 0,

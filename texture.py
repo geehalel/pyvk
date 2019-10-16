@@ -14,6 +14,11 @@ class VulkanExample(vks.vulkanexamplebase.VulkanExampleBase):
         super().__init__(enableValidation=True)
         self.texture = vks.vulkantexture.Texture2D()
 
+    def getEnabledFeatures(self):
+        # Enable anisotropic filtering if supported
+        if (self.deviceFeatures.samplerAnisotropy):
+            self.enabledFeatures.samplerAnisotropy = vk.VK_TRUE
+
     def loadTexture(self):
         filename = self.getAssetPath() + "textures/metalplate01_rgba.ktx"
         self.texture.loadFromFile(filename, vk.VK_FORMAT_R8G8B8A8_UNORM, self.vulkanDevice, self.queue)

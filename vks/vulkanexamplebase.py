@@ -356,7 +356,7 @@ Create one command buffer for each swap chain image and reuse for rendering
         self.deviceProperties = None
         self.deviceFeatures = None
         self.deviceMemoryProperties = None
-        self.enabledFeatures = []
+        self.enabledFeatures = vk.VkPhysicalDeviceFeatures()
         self.enabledDeviceExtensions = []
         self.enabledInstanceExtensions = []
         self.device = None

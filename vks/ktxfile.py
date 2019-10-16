@@ -98,14 +98,18 @@ class KtxFile:
         self.size = 0
         offset = self.offset_images
         imgsize = self.fd.read(4)
+        width = self.ktx_pixelwidth
+        height = self.ktx_pixelheight
         while imgsize != b'':
             imgsize, =  struct.unpack(self.endian+'I', imgsize)
             self.size += imgsize
             offset += 4
-            image = {'size': imgsize, 'offset': offset}
+            image = {'size': imgsize, 'offset': offset, 'width': width, 'height': height}
             self.ktx_images.append(image)
             self.fd.seek(imgsize, 1)
             offset += imgsize
+            width = width // 2
+            height = height // 2
             # beware of mip padding
             imgsize = self.fd.read(4)
 
