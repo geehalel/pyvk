@@ -80,7 +80,7 @@ Copies the specified data to the mapped buffer
         databuf.__array_interface__['shape'] = (size,)
         #databuf.__array_interface__['data'] = (id(data), False)
         databuf.__array_interface__['data'] = data
-        np.copyto(memorywrapper, databuf, casting='no')
+        np.copyto(memorywrapper[:size], databuf, casting='no')
 
     def flush(self, size = vk.VK_WHOLE_SIZE, offset = 0):
         """
