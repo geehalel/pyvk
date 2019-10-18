@@ -147,6 +147,7 @@ Create one command buffer for each swap chain image and reuse for rendering
 
         self.drawCmdBuffers = vk.vkAllocateCommandBuffers(self.device, cmdBufAllocateInfo)
 
+
     def destroyCommandBuffers(self):
         vk.vkFreeCommandBuffers(self.device, self.cmdPool, len(self.drawCmdBuffers), self.drawCmdBuffers)
 
@@ -327,6 +328,17 @@ Create one command buffer for each swap chain image and reuse for rendering
         self.createCommandPool()
         self.setupSwapChain()
         self.createCommandBuffers()
+        # TODO create submitInfo after drawCmdBuffers to be able to initialize pCommandBuffers
+        # self.submitInfo = vk.VkSubmitInfo(sType = vk.VK_STRUCTURE_TYPE_SUBMIT_INFO,
+        #     pWaitDstStageMask = self.submitPipelineStages,
+        #     waitSemaphoreCount = 1,
+        #     pWaitSemaphores = [self.semaphores['presentComplete']],
+        #     signalSemaphoreCount = 1,
+        #     pSignalSemaphores = [self.semaphores['renderComplete']],
+        #     # To be able to set pCommandBuffers directly in draw()
+        #     commandBufferCount = 1,
+        #     pCommandBuffers = [ self.drawCmdBuffers[0] ]
+        # )
         self.createSynchronizationPrimitives()
         self.setupDepthStencil()
         self.setupRenderPass()
@@ -566,8 +578,10 @@ Create one command buffer for each swap chain image and reuse for rendering
             waitSemaphoreCount = 1,
             pWaitSemaphores = [self.semaphores['presentComplete']],
             signalSemaphoreCount = 1,
-            pSignalSemaphores = [self.semaphores['renderComplete']])
-
+            pSignalSemaphores = [self.semaphores['renderComplete']],
+            # TODO: To be able to set pCommandBuffers directly in draw()
+            # pCommandBuffers = [  ]
+        )
         return True
     # Keyboard/Mouse stuff
     def handleMouseMove(self, x, y):
@@ -575,8 +589,9 @@ Create one command buffer for each swap chain image and reuse for rendering
         dy = self.mousePos.y - y
         handled = False
         if self.settings['overlay']:
-            pass
-        handled = self.mouseMoved(x, y)
+            io = imgui.get_io()
+            handled = io.want_capture_mouse
+        handled |= self.mouseMoved(x, y)
         if handled:
             self.mousePos = glm.vec2(x, y)
             return
@@ -777,6 +792,13 @@ Create one command buffer for each swap chain image and reuse for rendering
             scissor = vk.VkRect2D(offset = offsetscissor, extent = extentscissor)
             vk.vkCmdSetScissor(commandBuffer, 0, 1, [scissor])
             self.UIOverlay.draw(commandBuffer)
+
+    def prepareFrame(self):
+         self.currentBuffer=self.swapChain.acquireNextImage(self.semaphores['presentComplete'], self.currentBuffer)
+
+    def submitFrame(self):
+        self.swapChain.queuePresent(self.queue, self.currentBuffer, self.semaphores['renderComplete'])
+        vk.vkQueueWaitIdle(self.queue)
 
     def renderLoop(self):
         if self.benchmark.active:

@@ -9,6 +9,7 @@ import vks.vulkantexture
 
 import glm
 import numpy as np
+import imgui
 
 VERTEX_BUFFER_BIND_ID = 0
 
@@ -22,7 +23,7 @@ class VulkanExample(vks.vulkanexamplebase.VulkanExampleBase):
         self.indexBuffer = None
         self.indexCount = 0
         self.uniformBufferVS = None
-        self.uboVS = {'projection': glm.mat4(), 'model': glm.mat4(), 'viewPos': glm.vec4(), 'loadBias': glm.vec1(0.0)}
+        self.uboVS = {'projection': glm.mat4(), 'model': glm.mat4(), 'viewPos': glm.vec4(), 'lodBias': glm.vec1(0.0)}
         self.pipelines = {'solid': None}
         self.pipelineLayout = None
         self.descriptorSetLayout = None
@@ -148,7 +149,7 @@ class VulkanExample(vks.vulkanexamplebase.VulkanExampleBase):
             np.array(self.uboVS['projection']).flatten(order='C'),
             np.array(self.uboVS['model']).flatten(order='C'),
             np.array(self.uboVS['viewPos']).flatten(order='C'),
-            np.array(self.uboVS['loadBias']).flatten(order='C')
+            np.array(self.uboVS['lodBias']).flatten(order='C')
         ))
         self.uniformBufferVS.map()
         self.uniformBufferVS.copyTo(uboVSBuffer, uboVSSize)
@@ -201,7 +202,202 @@ class VulkanExample(vks.vulkanexamplebase.VulkanExampleBase):
             depthClampEnable = vk.VK_FALSE,
             lineWidth = 1.0
         )
-        
+        blendAttachmentState = vk.VkPipelineColorBlendAttachmentState(
+            colorWriteMask = 0xf,
+            blendEnable = vk.VK_FALSE
+        )
+        colorBlendState = vk.VkPipelineColorBlendStateCreateInfo(
+            sType = vk.VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO,
+            attachmentCount = 1,
+            pAttachments = [blendAttachmentState]
+        )
+        opState = vk.VkStencilOpState(
+            #failOp = vk.VK_STENCIL_OP_KEEP,
+            #passOp = vk.VK_STENCIL_OP_KEEP,
+            compareOp = vk.VK_COMPARE_OP_ALWAYS
+        )
+        depthStencilState = vk.VkPipelineDepthStencilStateCreateInfo(
+            sType = vk.VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO,
+            depthTestEnable = vk.VK_TRUE,
+            depthWriteEnable = vk.VK_TRUE,
+            depthCompareOp = vk.VK_COMPARE_OP_LESS_OR_EQUAL,
+            #depthBoundsTestEnable = vk.VK_FALSE,
+            #stencilTestEnable = vk.VK_FALSE,
+            front = opState,
+            back = opState
+        )
+        viewportState = vk.VkPipelineViewportStateCreateInfo(
+            sType = vk.VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO,
+            viewportCount = 1,
+            scissorCount = 1,
+            flags = 0
+        )
+        multisampleState = vk.VkPipelineMultisampleStateCreateInfo(
+            sType = vk.VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO,
+            rasterizationSamples = vk.VK_SAMPLE_COUNT_1_BIT,
+            flags = 0
+        )
+        dynamicStateEnables = [vk.VK_DYNAMIC_STATE_VIEWPORT, vk.VK_DYNAMIC_STATE_SCISSOR]
+        dynamicState = vk.VkPipelineDynamicStateCreateInfo(
+            sType = vk.VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO,
+            dynamicStateCount = len(dynamicStateEnables),
+            pDynamicStates = dynamicStateEnables,
+            flags = 0
+        )
+        shaderStages = []
+        # Vertex shader
+        shaderStage = vk.VkPipelineShaderStageCreateInfo(
+            sType = vk.VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
+            stage = vk.VK_SHADER_STAGE_VERTEX_BIT,
+            module = vks.vulkantools.loadShader(self.getAssetPath() + "shaders/texture/texture.vert.spv", self.device),
+            pName = "main"
+        )
+        shaderStages.append(shaderStage)
+        # Fragment shader
+        shaderStage = vk.VkPipelineShaderStageCreateInfo(
+            sType = vk.VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
+            stage = vk.VK_SHADER_STAGE_FRAGMENT_BIT,
+            module = vks.vulkantools.loadShader(self.getAssetPath() + "shaders/texture/texture.frag.spv", self.device),
+            pName = "main"
+        )
+        shaderStages.append(shaderStage)
+        pipelineCreateInfo = vk.VkGraphicsPipelineCreateInfo(
+            sType = vk.VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO,
+            layout = self.pipelineLayout,
+            renderPass = self.renderPass,
+            pVertexInputState = self.vertices['inputState'],
+            pInputAssemblyState = inputAssemblyState,
+            pRasterizationState = rasterizationState,
+            pColorBlendState = colorBlendState,
+            pMultisampleState = multisampleState,
+            pViewportState = viewportState,
+            pDepthStencilState = depthStencilState,
+            pDynamicState = dynamicState,
+            stageCount = len(shaderStages),
+            pStages = shaderStages,
+            flags = 0,
+            basePipelineIndex = -1,
+            basePipelineHandle = vk.VK_NULL_HANDLE
+        )
+        pipe = vk.vkCreateGraphicsPipelines(self.device, self.pipelineCache, 1, [pipelineCreateInfo], None)
+        try:
+            self.pipelines['solid'] = pipe[0]
+        except TypeError:
+            self.pipelines['solid'] = pipe
+
+    def setupDescriptorPool(self):
+        poolSizes = []
+        poolSize = vk.VkDescriptorPoolSize(
+            type = vk.VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+            descriptorCount = 1
+        )
+        poolSizes.append(poolSize)
+        poolSize = vk.VkDescriptorPoolSize(
+            type = vk.VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+            descriptorCount = 1
+        )
+        poolSizes.append(poolSize)
+        descriptorPoolInfo = vk.VkDescriptorPoolCreateInfo(
+            sType = vk.VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO,
+            poolSizeCount = len(poolSizes),
+            pPoolSizes = poolSizes,
+            maxSets = 2
+        )
+        self.descriptorPool = vk.vkCreateDescriptorPool(self.device, descriptorPoolInfo, None)
+
+    def setupDescriptorSet(self):
+        allocInfo = vk.VkDescriptorSetAllocateInfo(
+            sType = vk.VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,
+            descriptorPool = self.descriptorPool,
+            descriptorSetCount = 1,
+            pSetLayouts = [self.descriptorSetLayout]
+        )
+        descriptorSets = vk.vkAllocateDescriptorSets(self.device, allocInfo)
+        self.descriptorSet = descriptorSets[0]
+        # Setup a descriptor image info for the current texture to be used as a combined image sampler
+        textureDescriptor = vk.VkDescriptorImageInfo(
+            sampler = self.texture.sampler,     # The sampler (Telling the pipeline how to sample the texture, including repeat, border, etc.)
+            imageView = self.texture.view,      # The image's view (images are never directly accessed by the shader, but rather through views defining subresources)
+            imageLayout = self.texture.imageLayout # The current layout of the image (Note: Should always fit the actual use, e.g. shader read)
+        )
+        writeDescriptorSets = []
+        # Binding 0 : Vertex shader uniform buffer
+        writeDescriptorSet = vk.VkWriteDescriptorSet(
+            sType = vk.VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+            dstSet = self.descriptorSet,
+            descriptorType = vk.VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+            dstBinding = 0,
+            pBufferInfo = [ self.uniformBufferVS.descriptor ],
+            descriptorCount = 1
+        )
+        writeDescriptorSets.append(writeDescriptorSet)
+        # Binding 1 : Fragment shader texture sampler
+        # Fragment shader: layout (binding = 1) uniform sampler2D samplerColor
+        writeDescriptorSet = vk.VkWriteDescriptorSet(
+            sType = vk.VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+            dstSet = self.descriptorSet,
+            descriptorType = vk.VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, # // The descriptor set will use a combined image sampler (sampler and image could be split)
+            dstBinding = 1,                       # Shader binding point 1
+            pImageInfo = [ textureDescriptor ],   # Pointer to the descriptor image for our texture
+            descriptorCount = 1
+        )
+        writeDescriptorSets.append(writeDescriptorSet)
+        vk.vkUpdateDescriptorSets(self.device, len(writeDescriptorSets), writeDescriptorSets, 0, None)
+
+    def buildCommandBuffers(self):
+        cmdBufInfo = vk.VkCommandBufferBeginInfo(
+            sType = vk.VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
+            pNext = None
+        )
+        clearValues = []
+        clearValue = vk.VkClearValue(
+            color = self.defaultClearColor
+        )
+        clearValues.append(clearValue)
+        clearValue = vk.VkClearValue(
+            depthStencil = [1.0, 0 ]
+        )
+        clearValues.append(clearValue)
+        offset = vk.VkOffset2D(x = 0, y = 0)
+        extent = vk.VkExtent2D(width = self.width, height = self.height)
+        renderArea = vk.VkRect2D(offset = offset, extent = extent)
+        renderPassBeginInfo = vk.VkRenderPassBeginInfo(
+            sType = vk.VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO,
+            pNext = None,
+            renderPass = self.renderPass,
+            renderArea = renderArea,
+            clearValueCount = 2,
+            pClearValues = clearValues,
+        )
+        for i in range(len(self.drawCmdBuffers)):
+            renderPassBeginInfo.framebuffer = self.frameBuffers[i]
+            vk.vkBeginCommandBuffer(self.drawCmdBuffers[i], cmdBufInfo)
+            vk.vkCmdBeginRenderPass(self.drawCmdBuffers[i], renderPassBeginInfo, vk.VK_SUBPASS_CONTENTS_INLINE)
+            viewport = vk.VkViewport(
+                height = float(self.height),
+                width = float(self.width),
+                minDepth = 0.0,
+                maxDepth = 1.0
+            )
+            vk.vkCmdSetViewport(self.drawCmdBuffers[i], 0, 1, [viewport])
+            # Update dynamic scissor state
+            offsetscissor = vk.VkOffset2D(x = 0, y = 0)
+            extentscissor = vk.VkExtent2D(width = self.width, height = self.height)
+            scissor = vk.VkRect2D(offset = offsetscissor, extent = extentscissor)
+            vk.vkCmdSetScissor(self.drawCmdBuffers[i], 0, 1, [scissor])
+
+            vk.vkCmdBindDescriptorSets(self.drawCmdBuffers[i], vk.VK_PIPELINE_BIND_POINT_GRAPHICS, self.pipelineLayout, 0, 1, [self.descriptorSet], 0, None)
+            vk.vkCmdBindPipeline(self.drawCmdBuffers[i], vk.VK_PIPELINE_BIND_POINT_GRAPHICS, self.pipelines['solid'])
+
+            offsets = [ 0 ]
+            vk.vkCmdBindVertexBuffers(self.drawCmdBuffers[i], VERTEX_BUFFER_BIND_ID, 1, [self.vertexBuffer.buffer], offsets)
+            vk.vkCmdBindIndexBuffer(self.drawCmdBuffers[i], self.indexBuffer.buffer, 0, vk.VK_INDEX_TYPE_UINT32)
+            # Draw indexed triangle
+            vk.vkCmdDrawIndexed(self.drawCmdBuffers[i], self.indexCount, 1, 0, 0, 0)
+            self.drawUI(self.drawCmdBuffers[i])
+            vk.vkCmdEndRenderPass(self.drawCmdBuffers[i])
+            vk.vkEndCommandBuffer(self.drawCmdBuffers[i])
+
     def prepare(self):
         super().prepare()
         self.loadTexture()
@@ -210,6 +406,50 @@ class VulkanExample(vks.vulkanexamplebase.VulkanExampleBase):
         self.prepareUniformBuffers()
         self.setupDescriptorSetLayout()
         self.preparePipelines()
+        self.setupDescriptorPool()
+        self.setupDescriptorSet()
+        self.buildCommandBuffers()
+        self.prepared = True
+
+    def draw(self):
+        super().prepareFrame()
+        self.submitInfo.commandBufferCount = 1
+        # TODO try to avoid creating submitInfo at each frame
+        # need to get CData pointer on drawCmdBuffers[*]
+        # self.submitInfo.pCommandBuffers[0] = self.drawCmdBuffers[self.currentBuffer]
+        # vk.vkQueueSubmit(self.queue, 1, self.submitInfo, vk.VK_NULL_HANDLE)
+        submitInfo = vk.VkSubmitInfo(
+            sType = vk.VK_STRUCTURE_TYPE_SUBMIT_INFO,
+            pWaitDstStageMask = [ vk.VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT ],
+            pWaitSemaphores = [ self.semaphores['presentComplete'] ],
+            waitSemaphoreCount = 1,
+            signalSemaphoreCount = 1,
+            pSignalSemaphores = [ self.semaphores['renderComplete'] ],
+            pCommandBuffers = [ self.drawCmdBuffers[self.currentBuffer] ],
+            commandBufferCount = 1
+        )
+        vk.vkQueueSubmit(self.queue, 1, submitInfo, vk.VK_NULL_HANDLE)
+        super().submitFrame()
+
+    def render(self):
+        if not self.prepared:
+            return
+        #vk.vkDeviceWaitIdle(self.device)
+        self.draw()
+
+    def viewChanged(self):
+        self.updateUniformBuffers()
+
+    def onUpdateUIOverlay(self, overlay):
+        #return
+        if imgui.collapsing_header("Settings"):
+            res, value = imgui.slider_float("LOD bias", self.uboVS['lodBias'].x, 0.0, self.texture.mipLevels)
+            #res = False
+            if res:
+                overlay.updated = True
+                self.uboVS['lodBias'].x = value
+                self.updateUniformBuffers()
+
 
 texture = VulkanExample()
 texture.main()
