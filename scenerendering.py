@@ -97,11 +97,11 @@ class Scene:
                 }
             scenematerial['name'] = m.properties.get(AI_MATKEY_NAME)
             color = m.properties.get(AI_MATKEY_COLOR_AMBIENT) # returned as a list r, g, b, a hopefully
-            scenematerial['properties']['ambient'] = glm.vec4(color[0]) + glm.vec4(0.1)
+            scenematerial['properties']['ambient'] = glm.vec4(color) + glm.vec4(0.1)
             color = m.properties.get(AI_MATKEY_COLOR_DIFFUSE)
-            scenematerial['properties']['diffuse'] = glm.vec4(color[0])
+            scenematerial['properties']['diffuse'] = glm.vec4(color)
             color = m.properties.get(AI_MATKEY_COLOR_SPECULAR)
-            scenematerial['properties']['specular'] = glm.vec4(color[0])
+            scenematerial['properties']['specular'] = glm.vec4(color)
             if  m.properties.get(AI_MATKEY_OPACITY):
                 scenematerial['properties']['opacity'] = m.properties.get(AI_MATKEY_OPACITY)
             if scenematerial['properties']['opacity'] > 0.0:
@@ -239,7 +239,7 @@ class Scene:
             pSetLayouts = [self.descriptorSetLayouts['scene']]
         )
         descriptorSets = vk.vkAllocateDescriptorSets(self.vulkanDevice.logicalDevice, allocInfo)
-        self.descriptorSetScene = descriptorSets[0] 
+        self.descriptorSetScene = descriptorSets[0]
         writeDescriptorSets = []
         writeDescriptorSet = vk.VkWriteDescriptorSet(
             sType = vk.VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
@@ -254,7 +254,24 @@ class Scene:
 
     # Load all meshes from the scene and generate the buffers for rendering them
     def loadMeshes(self, copyCmd):
-        pass
+        vertices = []
+        indices = []
+        indexBase = 0
+        for aMesh in self.aScene.meshes:
+            print("Mesh \"" + aMesh.name +"\"")
+            print("  Material: \"" + self.materials[aMesh.materialindex]["name"] + "\"")
+            print("  Faces: " + str(len(aMesh.faces)))
+            scenepart = {
+                'material': self.materials[aMesh.materialindex],
+                'indexBase': indexBase,
+                'indexCount': len(aMesh.faces) * 3
+            }
+            self.meshes.append(scenepart)
+            hasUV = len(aMesh.texturecoords) > 0
+            hasColor = len(aMesh.colors) > 0
+            hasNormals = len(aMesh.normals) > 0
+            print("  hasUV", hasUV, "hasColor", hasColor, "hasNormals", hasNormals)
+
 
     def load(self, filename, copyCmd):
         flags = pyassimp.postprocess.aiProcess_PreTransformVertices | pyassimp.postprocess.aiProcess_Triangulate | pyassimp.postprocess.aiProcess_GenNormals
