@@ -151,6 +151,20 @@ Create one command buffer for each swap chain image and reuse for rendering
     def destroyCommandBuffers(self):
         vk.vkFreeCommandBuffers(self.device, self.cmdPool, len(self.drawCmdBuffers), self.drawCmdBuffers)
 
+    def createCommandBuffer(self, level, begin):
+        cmdBufAllocateInfo = vk.VkCommandBufferAllocateInfo(
+            sType = vk.VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
+            commandPool = self.cmdPool,
+            level =level,
+            commandBufferCount = 1)
+        cmdBuffer = vk.vkAllocateCommandBuffers(self.device, cmdBufAllocateInfo)
+        if begin:
+            cmdBufInfo = vk.VkCommandBufferBeginInfo(
+                sType = vk.VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO
+            )
+            vk.vkBeginCommandBuffer(cmdBuffer, cmdBufInfo)
+        return cmdBuffer
+
     def createSynchronizationPrimitives(self):
         # Wait fences to sync command buffer access
         fenceCreateInfo = vk.VkFenceCreateInfo(

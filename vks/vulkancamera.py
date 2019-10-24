@@ -72,3 +72,14 @@ class Camera:
     def translate(self, delta):
         self.position += delta
         self.updateViewMatrix()
+    def setRotation(self, rotation):
+        self.rotation = rotation
+        self.updateViewMatrix()
+    def setPosition(self, position):
+        self.position = position
+        self.updateViewMatrix()
+    def setPerspective(self, fov, aspect, znear, zfar):
+        self.fov = fov
+        self.znear = znear
+        self.zfar = zfar
+        self.matrices['perspective'] = glm.perspective(glm.radians(fov), aspect, znear, zfar)
