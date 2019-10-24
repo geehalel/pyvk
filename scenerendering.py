@@ -12,6 +12,7 @@ import glm
 import numpy as np
 import imgui
 import pyassimp
+# no material.py in Fedora! copy by hand
 import pyassimp.material
 
 VERTEX_BUFFER_BIND_ID = 0
@@ -39,10 +40,13 @@ class Scene:
         self.vertexBuffer = None
         self.indexBuffer = None
 
-        self.descriptorScene = None
+        self.descriptorSetScene = None
         self.aScene = None
 
         self.assetPath=""
+        # Shader properites for a material
+        # Will be passed to the shaders using push constant
+        self.scenematerialShape = {'ambient': glm.vec4(), 'diffuse': glm.vec4(),'specular': glm.vec4(), 'opacity': glm.vec1(0.0)}
         self.materials = []
         self.meshes = []
         # Shared ubo containing matrices used by all
@@ -138,6 +142,115 @@ class Scene:
 
             self.materials.append(scenematerial)
 
+        # Generate descriptor sets for the materials
+        # Descriptor pool
+        poolSizes = []
+        poolSize = vk.VkDescriptorPoolSize(
+            type = vk.VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+            descriptorCount = len(self.materials)
+        )
+        poolSizes.append(poolSize)
+        poolSize = vk.VkDescriptorPoolSize(
+            type = vk.VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+            descriptorCount = len(self.materials)
+        )
+        poolSizes.append(poolSize)
+        descriptorPoolInfo = vk.VkDescriptorPoolCreateInfo(
+            sType = vk.VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO,
+            poolSizeCount = len(poolSizes),
+            pPoolSizes = poolSizes,
+            maxSets = len(self.materials) + 1
+        )
+        self.descriptorPool = vk.vkCreateDescriptorPool(self.vulkanDevice.logicalDevice, descriptorPoolInfo, None)
+        # Descriptor set and pipeline layouts
+        # Set 0: Scene matrices
+        setLayoutBindings = []
+        layoutBinding = vk.VkDescriptorSetLayoutBinding(
+            descriptorType = vk.VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+            descriptorCount = 1,
+            stageFlags = vk.VK_SHADER_STAGE_VERTEX_BIT,
+            binding = 0
+        )
+        setLayoutBindings.append(layoutBinding)
+        descriptorLayout = vk.VkDescriptorSetLayoutCreateInfo(
+            sType = vk.VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
+            bindingCount = len(setLayoutBindings),
+            pBindings = setLayoutBindings
+        )
+        self.descriptorSetLayouts['scene'] = vk.vkCreateDescriptorSetLayout(self.vulkanDevice.logicalDevice, descriptorLayout, None)
+        # Set 1: Material data
+        setLayoutBindings = []
+        layoutBinding = vk.VkDescriptorSetLayoutBinding(
+            descriptorType = vk.VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+            descriptorCount = 1,
+            stageFlags = vk.VK_SHADER_STAGE_FRAGMENT_BIT,
+            binding = 0
+        )
+        setLayoutBindings.append(layoutBinding)
+        descriptorLayout = vk.VkDescriptorSetLayoutCreateInfo(
+            sType = vk.VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
+            bindingCount = len(setLayoutBindings),
+            pBindings = setLayoutBindings
+        )
+        self.descriptorSetLayouts['material'] = vk.vkCreateDescriptorSetLayout(self.vulkanDevice.logicalDevice, descriptorLayout, None)
+        # Setup pipeline layout
+        setLayouts = [self.descriptorSetLayouts['scene'], self.descriptorSetLayouts['material']]
+        scenematerialSize = sum([glm.sizeof(scenematerial) for scenematerial in self.scenematerialShape.values()])
+        pushConstantRange = vk.VkPushConstantRange(
+            stageFlags = vk.VK_SHADER_STAGE_FRAGMENT_BIT,
+            offset = 0,
+            size = scenematerialSize
+        )
+        pPipelineLayoutCreateInfo = vk.VkPipelineLayoutCreateInfo(
+            sType = vk.VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
+            setLayoutCount = len(setLayouts),
+            pSetLayouts = setLayouts,
+            pushConstantRangeCount = 1,
+            pPushConstantRanges = [ pushConstantRange ]
+        )
+        self.pipelineLayout = vk.vkCreatePipelineLayout(self.vulkanDevice.logicalDevice, pPipelineLayoutCreateInfo, None)
+        # Material descriptor sets
+        for m in self.materials:
+            allocInfo = vk.VkDescriptorSetAllocateInfo(
+                sType = vk.VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,
+                descriptorPool = self.descriptorPool,
+                descriptorSetCount = 1,
+                pSetLayouts = [self.descriptorSetLayouts['material']]
+            )
+            descriptorSets = vk.vkAllocateDescriptorSets(self.vulkanDevice.logicalDevice, allocInfo)
+            m['descriptorSet'] = descriptorSets[0]
+            # Binding 0: Diffuse texture
+            writeDescriptorSets = []
+            writeDescriptorSet = vk.VkWriteDescriptorSet(
+                sType = vk.VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+                dstSet = m['descriptorSet'],
+                descriptorType = vk.VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+                dstBinding = 0,
+                pImageInfo = [ m['diffuse'].descriptor ],
+                descriptorCount = 1
+            )
+            writeDescriptorSets.append(writeDescriptorSet)
+            vk.vkUpdateDescriptorSets(self.vulkanDevice.logicalDevice, len(writeDescriptorSets), writeDescriptorSets, 0, None)
+        # Scene descriptor set
+        allocInfo = vk.VkDescriptorSetAllocateInfo(
+            sType = vk.VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,
+            descriptorPool = self.descriptorPool,
+            descriptorSetCount = 1,
+            pSetLayouts = [self.descriptorSetLayouts['scene']]
+        )
+        descriptorSets = vk.vkAllocateDescriptorSets(self.vulkanDevice.logicalDevice, allocInfo)
+        self.descriptorSetScene = descriptorSets[0] 
+        writeDescriptorSets = []
+        writeDescriptorSet = vk.VkWriteDescriptorSet(
+            sType = vk.VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+            dstSet = self.descriptorSetScene,
+            descriptorType = vk.VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+            dstBinding = 0,
+            pBufferInfo = [ self.uniformBuffer.descriptor ],
+            descriptorCount = 1
+        )
+        writeDescriptorSets.append(writeDescriptorSet)
+        vk.vkUpdateDescriptorSets(self.vulkanDevice.logicalDevice, len(writeDescriptorSets), writeDescriptorSets, 0, None)
 
     # Load all meshes from the scene and generate the buffers for rendering them
     def loadMeshes(self, copyCmd):

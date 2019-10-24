@@ -487,7 +487,7 @@ Create one command buffer for each swap chain image and reuse for rendering
         for i in range(len(self.frameBuffers)):
             vk.vkDestroyFramebuffer(self.device, self.frameBuffers[i], None)
         for shaderModule in self.shaderModules:
-            vk.vkDestroyShaderModule(self.device, shaderModule)
+            vk.vkDestroyShaderModule(self.device, shaderModule, None)
         vk.vkDestroyImageView(self.device, self.depthStencil['view'], None)
         vk.vkDestroyImage(self.device, self.depthStencil['image'], None)
         vk.vkFreeMemory(self.device, self.depthStencil['mem'], None)
@@ -502,7 +502,7 @@ Create one command buffer for each swap chain image and reuse for rendering
             vk.vkDestroyFence(self.device, fence, None)
 
         if self.settings['overlay']:
-            UIOverlay.freeResources()
+            self.UIOverlay.freeResources()
 
         self.vulkanDevice.cleanup()
         self.vulkanDevice = None

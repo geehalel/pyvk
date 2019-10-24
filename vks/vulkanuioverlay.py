@@ -446,3 +446,16 @@ Prepare a separate pipeline for the UI overlay rendering decoupled from the main
                 vk.vkCmdDrawIndexed(commandBuffer, pcmd.elem_count, 1, indexOffset, vertexOffset, 0)
                 indexOffset += pcmd.elem_count
             vertexOffset += cmd_list.vtx_buffer_size
+
+    def freeResources(self):
+        imgui.destroy_context()
+        self.vertexBuffer.destroy()
+        self.indexBuffer.destroy()
+        vk.vkDestroyImageView(self.device.logicalDevice, self.fontView, None)
+        vk.vkDestroyImage(self.device.logicalDevice, self.fontImage, None)
+        vk.vkFreeMemory(self.device.logicalDevice, self.fontMemory, None)
+        vk.vkDestroySampler(self.device.logicalDevice, self.sampler, None)
+        vk.vkDestroyDescriptorSetLayout(self.device.logicalDevice, self.descriptorSetLayout, None)
+        vk.vkDestroyDescriptorPool(self.device.logicalDevice, self.descriptorPool, None)
+        vk.vkDestroyPipelineLayout(self.device.logicalDevice, self.pipelineLayout, None)
+        vk.vkDestroyPipeline(self.device.logicalDevice, self.pipeline, None)
