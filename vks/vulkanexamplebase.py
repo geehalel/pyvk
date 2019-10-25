@@ -508,8 +508,8 @@ Create one command buffer for each swap chain image and reuse for rendering
         self.vulkanDevice.cleanup()
         self.vulkanDevice = None
 
-        if self.settings['validation']:
-            vks.vulkandebug.freeDebugCallBack(self.instance)
+        #if self.settings['validation']:
+        #    vks.vulkandebug.freeDebugCallBack(self.instance)
 
         vk.vkDestroyInstance(self.instance, None)
 

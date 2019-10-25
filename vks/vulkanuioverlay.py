@@ -448,7 +448,7 @@ Prepare a separate pipeline for the UI overlay rendering decoupled from the main
             vertexOffset += cmd_list.vtx_buffer_size
 
     def freeResources(self):
-        imgui.destroy_context()
+        #imgui.destroy_context()
         self.vertexBuffer.destroy()
         self.indexBuffer.destroy()
         vk.vkDestroyImageView(self.device.logicalDevice, self.fontView, None)

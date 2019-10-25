@@ -14,6 +14,7 @@ import imgui
 import pyassimp
 # no material.py in Fedora! copy by hand
 import pyassimp.material
+pyassimp.logger.setLevel(pyassimp.logging.ERROR)
 
 VERTEX_BUFFER_BIND_ID = 0
 
@@ -98,11 +99,14 @@ class Scene:
                 }
             scenematerial['name'] = m.properties.get(AI_MATKEY_NAME)
             color = m.properties.get(AI_MATKEY_COLOR_AMBIENT) # returned as a list r, g, b, a hopefully
-            scenematerial['properties']['ambient'] = glm.vec4(color) + glm.vec4(0.1)
+            if color:
+                scenematerial['properties']['ambient'] = glm.vec4(color) + glm.vec4(0.1)
             color = m.properties.get(AI_MATKEY_COLOR_DIFFUSE)
-            scenematerial['properties']['diffuse'] = glm.vec4(color)
+            if color:
+                scenematerial['properties']['diffuse'] = glm.vec4(color)
             color = m.properties.get(AI_MATKEY_COLOR_SPECULAR)
-            scenematerial['properties']['specular'] = glm.vec4(color)
+            if color:
+                scenematerial['properties']['specular'] = glm.vec4(color)
             if  m.properties.get(AI_MATKEY_OPACITY):
                 scenematerial['properties']['opacity'] = glm.vec1(m.properties.get(AI_MATKEY_OPACITY))
             if scenematerial['properties']['opacity'] > glm.vec1(0.0):
@@ -138,8 +142,8 @@ class Scene:
             # For scenes with multiple textures per material we would need to check for additional texture types, e.g.:
             # aiTextureType_HEIGHT, aiTextureType_OPACITY, aiTextureType_SPECULAR, etc.
 
-            # Assign pipeline
-            scenematerial['pipeline'] = self.pipelines['solid'] if scenematerial['properties']['opacity'] == 0.0 else self.pipelines['blending']
+            # Assign pipeline: can not do it that in python as there are no refernces yet to the pipelines
+            # scenematerial['pipeline'] = self.pipelines['solid'] if scenematerial['properties']['opacity'] == 0.0 else self.pipelines['blending']
 
             self.materials.append(scenematerial)
 
@@ -381,8 +385,8 @@ class Scene:
                 np.array(self.meshes[i]['material']['properties']['specular']).flatten(order='C'),
                 np.array(self.meshes[i]['material']['properties']['opacity']).flatten(order='C')
             ))
-            #vk.vkCmdPushConstants(cmdBuffer, self.pipelineLayout, vk.VK_SHADER_STAGE_FRAGMENT_BIT, 0,
-			#	propertiesSize, propertiesData)
+            vk.vkCmdPushConstants(cmdBuffer, self.pipelineLayout, vk.VK_SHADER_STAGE_FRAGMENT_BIT, 0,
+				propertiesSize, propertiesData.__array_interface__['data'][0])
             # Render from the global scene vertex buffer using the mesh index offset
             vk.vkCmdDrawIndexed(cmdBuffer, self.meshes[i]['indexCount'], 1, 0, self.meshes[i]['indexBase'], 0)
 
@@ -415,13 +419,17 @@ Summary:
 
         self.title = "Multi-part scene rendering"
         self.rotationSpeed = 0.5
-        self.camera.type = vks.vulkancamera.CameraType.firstperson
+        self.camera.typecam = vks.vulkancamera.CameraType.firstperson
         self.camera.movementSpeed = 7.5
         self.camera.position = glm.vec3(15.0, -13.5, 0.0)
         self.camera.setRotation(glm.vec3(5.0, 90.0, 0.0))
         self.camera.setPerspective(60.0, self.width / self.height, 0.1, 256.0)
         self.settings['overlay'] = True
 
+    def __del__(self):
+        if self.scene:
+            del(self.scene)
+            
     # Enable physical device features required for this example
     def getEnabledFeatures(self):
         # Fill mode non solid is required for wireframe display
@@ -625,6 +633,9 @@ Summary:
                 self.scene.pipelines['wireframe'] = pipe[0]
             except TypeError:
                 self.scene.pipelines['wireframe'] = pipe
+        # Assign pipeline: can not do it that in python as there are no refernces yet to the pipelines
+        for m in self.scene.materials:
+            m['pipeline'] = self.scene.pipelines['solid'] if m['properties']['opacity'] == 0.0 else self.scene.pipelines['blending']
 
     def buildCommandBuffers(self):
         cmdBufInfo = vk.VkCommandBufferBeginInfo(
@@ -667,8 +678,8 @@ Summary:
             scissor = vk.VkRect2D(offset = offsetscissor, extent = extentscissor)
             vk.vkCmdSetScissor(self.drawCmdBuffers[i], 0, 1, [scissor])
 
-            #self.scene.render(self.drawCmdBuffers[i], self.wireframe)
-            self.scene.render(self.drawCmdBuffers[i], True)
+            self.scene.render(self.drawCmdBuffers[i], self.wireframe)
+            #self.scene.render(self.drawCmdBuffers[i], True)
             self.drawUI(self.drawCmdBuffers[i])
             vk.vkCmdEndRenderPass(self.drawCmdBuffers[i])
             vk.vkEndCommandBuffer(self.drawCmdBuffers[i])
@@ -709,6 +720,32 @@ Summary:
 
     def viewChanged(self):
         self.updateUniformBuffers()
+
+    def onUpdateUIOverlay(self, overlay):
+        if imgui.collapsing_header("Settings"):
+            if self.deviceFeatures.fillModeNonSolid:
+                res, value = imgui.checkbox("Wireframe", self.wireframe)
+                if res:
+                    overlay.updated = True
+                    self.wireframe = value
+                    self.buildCommandBuffers()
+            if self.scene:
+                res, value = imgui.checkbox("Attach Light", self.attachLight)
+                if res:
+                    overlay.updated = True
+                    self.attachLight = value
+                    self.updateUniformBuffers()
+                res, value = imgui.checkbox("Render single part", self.scene.renderSingleScenePart)
+                if res:
+                    overlay.updated = True
+                    self.scene.renderSingleScenePart = value
+                    self.buildCommandBuffers()
+                if self.scene.renderSingleScenePart:
+                    res, value = imgui.slider_int("Part to render", self.scene.scenePartIndex, 0, len(self.scene.meshes))
+                    if res:
+                        overlay.updated = True
+                        self.scene.scenePartIndex = value
+                        self.buildCommandBuffers()
 
 scenerendering = VulkanExample()
 scenerendering.main()
