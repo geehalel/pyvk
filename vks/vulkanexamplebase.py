@@ -595,7 +595,8 @@ Create one command buffer for each swap chain image and reuse for rendering
             signalSemaphoreCount = 1,
             pSignalSemaphores = [self.semaphores['renderComplete']],
             # TODO: To be able to set pCommandBuffers directly in draw()
-            # pCommandBuffers = [  ]
+            # commandBufferCount = 1,
+            # pCommandBuffers = [ 0x0 ]
         )
         return True
     # Keyboard/Mouse stuff

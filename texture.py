@@ -15,7 +15,7 @@ VERTEX_BUFFER_BIND_ID = 0
 
 class VulkanExample(vks.vulkanexamplebase.VulkanExampleBase):
     def __init__(self):
-        super().__init__(enableValidation=True)
+        super().__init__(enableValidation=False)
         self.texture = vks.vulkantexture.Texture2D()
         self.vertices = {'inputState': None, 'bindingDescriptions': [], 'attributeDescriptions': []}
         self.vertexBuffer = None
@@ -409,15 +409,27 @@ class VulkanExample(vks.vulkanexamplebase.VulkanExampleBase):
         self.setupDescriptorPool()
         self.setupDescriptorSet()
         self.buildCommandBuffers()
+        # self.submitInfo = vk.VkSubmitInfo(sType = vk.VK_STRUCTURE_TYPE_SUBMIT_INFO,
+        #     pWaitDstStageMask = self.submitPipelineStages,
+        #     waitSemaphoreCount = 1,
+        #     pWaitSemaphores = [self.semaphores['presentComplete']],
+        #     signalSemaphoreCount = 1,
+        #     pSignalSemaphores = [self.semaphores['renderComplete']],
+        #     # To be able to set pCommandBuffers directly in draw()
+        #     commandBufferCount = 1,
+        #     pCommandBuffers = [ self.drawCmdBuffers[0] ]
+        # )
+        # # optimization to avoid creating a new array each time
+        # self.submit_list = vk.ffi.new('VkSubmitInfo[1]', [self.submitInfo])
         self.prepared = True
 
     def draw(self):
         super().prepareFrame()
-        self.submitInfo.commandBufferCount = 1
+        # self.submitInfo.commandBufferCount = 1
         # TODO try to avoid creating submitInfo at each frame
         # need to get CData pointer on drawCmdBuffers[*]
         # self.submitInfo.pCommandBuffers[0] = self.drawCmdBuffers[self.currentBuffer]
-        # vk.vkQueueSubmit(self.queue, 1, self.submitInfo, vk.VK_NULL_HANDLE)
+        # vk.vkQueueSubmit(self.queue, 1, self.submit_list, vk.VK_NULL_HANDLE)
         submitInfo = vk.VkSubmitInfo(
             sType = vk.VK_STRUCTURE_TYPE_SUBMIT_INFO,
             pWaitDstStageMask = [ vk.VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT ],
@@ -428,13 +440,13 @@ class VulkanExample(vks.vulkanexamplebase.VulkanExampleBase):
             pCommandBuffers = [ self.drawCmdBuffers[self.currentBuffer] ],
             commandBufferCount = 1
         )
-        vk.vkQueueSubmit(self.queue, 1, submitInfo, vk.VK_NULL_HANDLE)
+        vk.vkQueueSubmit(self.queue, 1,  submitInfo , vk.VK_NULL_HANDLE)
         super().submitFrame()
 
     def render(self):
         if not self.prepared:
             return
-        #vk.vkDeviceWaitIdle(self.device)
+        # vk.vkDeviceWaitIdle(self.device)
         self.draw()
 
     def viewChanged(self):
