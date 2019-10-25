@@ -157,7 +157,8 @@ Create one command buffer for each swap chain image and reuse for rendering
             commandPool = self.cmdPool,
             level =level,
             commandBufferCount = 1)
-        cmdBuffer = vk.vkAllocateCommandBuffers(self.device, cmdBufAllocateInfo)
+        cmdBuffers = vk.vkAllocateCommandBuffers(self.device, cmdBufAllocateInfo)
+        cmdBuffer = cmdBuffers[0]
         if begin:
             cmdBufInfo = vk.VkCommandBufferBeginInfo(
                 sType = vk.VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO

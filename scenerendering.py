@@ -37,6 +37,7 @@ class Scene:
         # We will be using one single index and vertex buffer
         # containing vertices and indices for all meshes in the scene
         # This allows us to keep memory allocations down
+        self.vertexShape = np.dtype([('pos', np.float32, (3,)), ('normal', np.float32, (3,)), ('uv', np.float32, (2,)), ('color', np.float32, (3,))]) #position, normal, uv, color
         self.vertexBuffer = None
         self.indexBuffer = None
 
@@ -254,9 +255,17 @@ class Scene:
 
     # Load all meshes from the scene and generate the buffers for rendering them
     def loadMeshes(self, copyCmd):
-        vertices = []
-        indices = []
+        # allocate numpy arrays
+        vertexCount = 0
+        indexCount = 0
+        for aMesh in self.aScene.meshes:
+            vertexCount += len(aMesh.vertices)
+            indexCount += len(aMesh.faces) * 3
+        vertices = np.empty((vertexCount,), dtype = self.vertexShape)
+        indices = np.empty((indexCount,), dtype=np.uint32)
         indexBase = 0
+        vertexCount = 0
+        indexCount = 0
         for aMesh in self.aScene.meshes:
             print("Mesh \"" + aMesh.name +"\"")
             print("  Material: \"" + self.materials[aMesh.materialindex]["name"] + "\"")
@@ -267,11 +276,65 @@ class Scene:
                 'indexCount': len(aMesh.faces) * 3
             }
             self.meshes.append(scenepart)
+            # Vertices
             hasUV = len(aMesh.texturecoords) > 0
             hasColor = len(aMesh.colors) > 0
             hasNormals = len(aMesh.normals) > 0
             print("  hasUV", hasUV, "hasColor", hasColor, "hasNormals", hasNormals)
+            for v in range(len(aMesh.vertices)):
+                vertices[vertexCount]['pos'] = aMesh.vertices[v]
+                vertices[vertexCount]['pos'] = -vertices[vertexCount]['pos']
+                vertices[vertexCount]['uv'] = aMesh.texturecoords[0][v][:2] if hasUV else [0.0, 0.0]
+                vertices[vertexCount]['normal'] = aMesh.normals[v] if hasNormals else [0.0, 0.0, 0.0]
+                vertices[vertexCount]['normal'] = -vertices[vertexCount]['normal']
+                vertices[vertexCount]['color'] = aMesh.colors[v] if hasColor else [1.0, 1.0, 1.0]
+                vertexCount += 1
+            # Indices
+            for f in range(len(aMesh.faces)):
+                for j in range(3):
+                    indices[indexCount] = aMesh.faces[f][j]
+                    indexCount += 1
+            indexBase += len(aMesh.faces) * 3
+        # Create buffers
+        # For better performance we only create one index and vertex buffer to keep number of memory allocations down
+        vertexDataSize = vertices.size * vertices.itemsize
+        indexDataSize = indices.size * indices.itemsize
+        # Vertex buffer
+        #  Staging buffer
+        vertexStaging = self.vulkanDevice.createvksBuffer(vk.VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
+            vk.VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | vk.VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+            vertexDataSize, vertices)
+        # Target
+        self.vertexBuffer = self.vulkanDevice.createvksBuffer(vk.VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | vk.VK_BUFFER_USAGE_TRANSFER_DST_BIT,
+            vk.VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, vertexDataSize)
+        # Index buffer
+        #  Staging buffer
+        indexStaging = self.vulkanDevice.createvksBuffer(vk.VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
+            vk.VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | vk.VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+            indexDataSize, indices)
+        # Target
+        self.indexBuffer = self.vulkanDevice.createvksBuffer(vk.VK_BUFFER_USAGE_INDEX_BUFFER_BIT | vk.VK_BUFFER_USAGE_TRANSFER_DST_BIT,
+            vk.VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, indexDataSize)
+        # Copy
+        cmdBufInfo = vk.VkCommandBufferBeginInfo(
+            sType = vk.VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
+        )
+        vk.vkBeginCommandBuffer(copyCmd, cmdBufInfo)
+        copyRegion = vk.VkBufferCopy(size = vertexDataSize)
+        vk.vkCmdCopyBuffer(copyCmd, vertexStaging.buffer, self.vertexBuffer.buffer, 1, copyRegion)
+        copyRegion = vk.VkBufferCopy(size = indexDataSize)
+        vk.vkCmdCopyBuffer(copyCmd, indexStaging.buffer, self.indexBuffer.buffer, 1, copyRegion)
+        vk.vkEndCommandBuffer(copyCmd)
+        submitInfo = vk.VkSubmitInfo(
+            sType = vk.VK_STRUCTURE_TYPE_SUBMIT_INFO,
+            pCommandBuffers = [ copyCmd ],
+            commandBufferCount = 1
+        )
+        vk.vkQueueSubmit(self.queue, 1, submitInfo, vk.VK_NULL_HANDLE)
+        vk.vkQueueWaitIdle(self.queue)
 
+        vertexStaging.destroy()
+        indexStaging.destroy()
 
     def load(self, filename, copyCmd):
         flags = pyassimp.postprocess.aiProcess_PreTransformVertices | pyassimp.postprocess.aiProcess_Triangulate | pyassimp.postprocess.aiProcess_GenNormals
@@ -371,7 +434,7 @@ Summary:
         scene = Scene(self.vulkanDevice, self.queue)
         scene.assetPath = self.getAssetPath() + "models/sibenik/"
         scene.load(self.getAssetPath() + "models/sibenik/sibenik.dae", copyCmd)
-        vk.vkFreeCommandBuffers(self.device, self.cmdPool, 1, copyCmd)
+        vk.vkFreeCommandBuffers(self.device, self.cmdPool, 1, [ copyCmd ])
 
 
     def prepare(self):
