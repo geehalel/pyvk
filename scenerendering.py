@@ -47,7 +47,7 @@ class Scene:
         self.assetPath=""
         # Shader properites for a material
         # Will be passed to the shaders using push constant
-        self.scenematerialShape = {'ambient': glm.vec4(), 'diffuse': glm.vec4(),'specular': glm.vec4(), 'opacity': glm.vec1(0.0)}
+        self.scenematerialShape = {'ambient': glm.vec4(0.0), 'diffuse': glm.vec4(0.0),'specular': glm.vec4(0.0), 'opacity': glm.vec1(0.0)}
         self.materials = []
         self.meshes = []
         # Shared ubo containing matrices used by all
@@ -91,7 +91,7 @@ class Scene:
             m = self.aScene.materials[i]
             scenematerial = {
                 'name': None,
-                'properties': {'ambient': glm.vec4(), 'diffuse': glm.vec4(),'specular': glm.vec4(), 'opacity': 0.0},
+                'properties': {'ambient': glm.vec4(0.0), 'diffuse': glm.vec4(0.0),'specular': glm.vec4(0.0), 'opacity': glm.vec1(0.0)},
                 'diffuse': vks.vulkantexture.Texture2D(),
                 'descriptorSet': None,
                 'pipeline': None
@@ -104,8 +104,8 @@ class Scene:
             color = m.properties.get(AI_MATKEY_COLOR_SPECULAR)
             scenematerial['properties']['specular'] = glm.vec4(color)
             if  m.properties.get(AI_MATKEY_OPACITY):
-                scenematerial['properties']['opacity'] = m.properties.get(AI_MATKEY_OPACITY)
-            if scenematerial['properties']['opacity'] > 0.0:
+                scenematerial['properties']['opacity'] = glm.vec1(m.properties.get(AI_MATKEY_OPACITY))
+            if scenematerial['properties']['opacity'] > glm.vec1(0.0):
                 scenematerial['properties']['specular'] = glm.vec4(0.0)
             print("Material: \"" + scenematerial['name'] + "\"")
 
@@ -139,7 +139,7 @@ class Scene:
             # aiTextureType_HEIGHT, aiTextureType_OPACITY, aiTextureType_SPECULAR, etc.
 
             # Assign pipeline
-            scenematerial['pipeline'] = self.pipelines['solid'] if scenematerial['properties']['opacity'] == 0.0 else self.pipelines['solid']
+            scenematerial['pipeline'] = self.pipelines['solid'] if scenematerial['properties']['opacity'] == 0.0 else self.pipelines['blending']
 
             self.materials.append(scenematerial)
 
@@ -196,7 +196,7 @@ class Scene:
         self.descriptorSetLayouts['material'] = vk.vkCreateDescriptorSetLayout(self.vulkanDevice.logicalDevice, descriptorLayout, None)
         # Setup pipeline layout
         setLayouts = [self.descriptorSetLayouts['scene'], self.descriptorSetLayouts['material']]
-        scenematerialSize = sum([glm.sizeof(scenematerial) for scenematerial in self.scenematerialShape.values()])
+        scenematerialSize = sum([glm.sizeof(scenematerialprop) for scenematerialprop in self.scenematerialShape.values()])
         pushConstantRange = vk.VkPushConstantRange(
             stageFlags = vk.VK_SHADER_STAGE_FRAGMENT_BIT,
             offset = 0,
@@ -350,6 +350,42 @@ class Scene:
             print('Error parsing', filename)
             raise RuntimeError
 
+    # Renders the scene into an active command buffer
+    # In a real world application we would do some visibility culling in here
+    def render(self, cmdBuffer, wireframe):
+        offsets = [ 0 ]
+        # Bind scene vertex and index buffers
+        vk.vkCmdBindVertexBuffers(cmdBuffer, 0, 1, [ self.vertexBuffer.buffer ], offsets)
+        vk.vkCmdBindIndexBuffer(cmdBuffer, self.indexBuffer.buffer, 0, vk.VK_INDEX_TYPE_UINT32)
+
+        for i in range(len(self.meshes)):
+            if self.renderSingleScenePart and i != self.scenePartIndex:
+                continue
+            # TODO : per material pipelines
+            # vkCmdBindPipeline(cmdBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, *mesh.material->pipeline);
+            # We will be using multiple descriptor sets for rendering
+            # In GLSL the selection is done via the set and binding keywords
+            # VS: layout (set = 0, binding = 0) uniform UBO;
+            # FS: layout (set = 1, binding = 0) uniform sampler2D samplerColorMap;
+            descriptorSets = []
+            descriptorSets.append(self.descriptorSetScene)
+            descriptorSets.append(self.meshes[i]['material']['descriptorSet'])
+            vk.vkCmdBindPipeline(cmdBuffer, vk.VK_PIPELINE_BIND_POINT_GRAPHICS,
+                self.pipelines['wireframe'] if wireframe else self.meshes[i]['material']['pipeline'])
+            vk.vkCmdBindDescriptorSets(cmdBuffer, vk.VK_PIPELINE_BIND_POINT_GRAPHICS, self.pipelineLayout, 0, len(descriptorSets), descriptorSets, 0, None)
+            # Pass material properies via push constants
+            propertiesSize = sum([glm.sizeof(pdata) for pdata in self.meshes[i]['material']['properties'].values()])
+            propertiesData = np.concatenate((
+                np.array(self.meshes[i]['material']['properties']['ambient']).flatten(order='C'),
+                np.array(self.meshes[i]['material']['properties']['diffuse']).flatten(order='C'),
+                np.array(self.meshes[i]['material']['properties']['specular']).flatten(order='C'),
+                np.array(self.meshes[i]['material']['properties']['opacity']).flatten(order='C')
+            ))
+            #vk.vkCmdPushConstants(cmdBuffer, self.pipelineLayout, vk.VK_SHADER_STAGE_FRAGMENT_BIT, 0,
+			#	propertiesSize, propertiesData)
+            # Render from the global scene vertex buffer using the mesh index offset
+            vk.vkCmdDrawIndexed(cmdBuffer, self.meshes[i]['indexCount'], 1, 0, self.meshes[i]['indexBase'], 0)
+
 class VulkanExample(vks.vulkanexamplebase.VulkanExampleBase):
     """
 Summary:
@@ -369,8 +405,13 @@ Summary:
     """
     def __init__(self):
         super().__init__(enableValidation=True)
+        self.wireframe = False
+        self.attachLight = False
+
+        # also used in Scene
         self.vertexShape = np.dtype([('pos', np.float32, (3,)), ('normal', np.float32, (3,)), ('uv', np.float32, (2,)), ('color', np.float32, (3,))]) #position, normal, uv, color
         self.vertices = {'inputState': None, 'bindingDescriptions': [], 'attributeDescriptions': []}
+        self.scene = None
 
         self.title = "Multi-part scene rendering"
         self.rotationSpeed = 0.5
@@ -380,6 +421,18 @@ Summary:
         self.camera.setRotation(glm.vec3(5.0, 90.0, 0.0))
         self.camera.setPerspective(60.0, self.width / self.height, 0.1, 256.0)
         self.settings['overlay'] = True
+
+    # Enable physical device features required for this example
+    def getEnabledFeatures(self):
+        # Fill mode non solid is required for wireframe display
+        if self.deviceFeatures.fillModeNonSolid:
+            self.enabledFeatures.fillModeNonSolid = vk.VK_TRUE
+        if self.deviceFeatures.textureCompressionBC:
+            self.enabledFeatures.textureCompressionBC = vk.VK_TRUE
+        if self.deviceFeatures.textureCompressionETC2:
+            self.enabledFeatures.textureCompressionETC2 = vk.VK_TRUE
+        if self.deviceFeatures.textureCompressionASTC_LDR:
+            self.enabledFeatures.textureCompressionASTC_LDR = vk.VK_TRUE
 
     def setupVertexDescriptions(self):
         vertexInputBinding = vk.VkVertexInputBindingDescription(
@@ -429,18 +482,224 @@ Summary:
             pVertexAttributeDescriptions = self.vertices['attributeDescriptions']
         )
 
+    def updateUniformBuffers(self):
+        if self.attachLight:
+            self.scene.uniformData['lightPos'] = glm.vec4(-self.camera.position, 1.0)
+        self.scene.uniformData['projection'] = self.camera.matrices['perspective']
+        self.scene.uniformData['view'] = self.camera.matrices['view']
+        self.scene.uniformData['model'] = glm.mat4(1.0)
+        uDataSize = sum([glm.sizeof(udata) for udata in self.scene.uniformData.values()])
+        uData = np.concatenate((
+            np.array(self.scene.uniformData['projection']).flatten(order='C'),
+            np.array(self.scene.uniformData['view']).flatten(order='C'),
+            np.array(self.scene.uniformData['model']).flatten(order='C'),
+            np.array(self.scene.uniformData['lightPos']).flatten(order='C')
+        ))
+        self.scene.uniformBuffer.copyTo(uData, uDataSize)
+
     def loadScene(self):
         copyCmd = super().createCommandBuffer(vk.VK_COMMAND_BUFFER_LEVEL_PRIMARY, False)
-        scene = Scene(self.vulkanDevice, self.queue)
-        scene.assetPath = self.getAssetPath() + "models/sibenik/"
-        scene.load(self.getAssetPath() + "models/sibenik/sibenik.dae", copyCmd)
+        self.scene = Scene(self.vulkanDevice, self.queue)
+        self.scene.assetPath = self.getAssetPath() + "models/sibenik/"
+        self.scene.load(self.getAssetPath() + "models/sibenik/sibenik.dae", copyCmd)
         vk.vkFreeCommandBuffers(self.device, self.cmdPool, 1, [ copyCmd ])
+        self.updateUniformBuffers()
 
+    def preparePipelines(self):
+        inputAssemblyState = vk.VkPipelineInputAssemblyStateCreateInfo(
+            sType = vk.VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO,
+            topology = vk.VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST,
+            flags= 0,
+            primitiveRestartEnable = vk.VK_FALSE
+        )
+        rasterizationState = vk.VkPipelineRasterizationStateCreateInfo(
+            sType = vk.VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO,
+            polygonMode = vk.VK_POLYGON_MODE_FILL,
+            cullMode = vk.VK_CULL_MODE_BACK_BIT,
+            frontFace = vk.VK_FRONT_FACE_COUNTER_CLOCKWISE,
+            flags = 0,
+            depthClampEnable = vk.VK_FALSE,
+            lineWidth = 1.0
+        )
+        blendAttachmentState = vk.VkPipelineColorBlendAttachmentState(
+            colorWriteMask = 0xf,
+            blendEnable = vk.VK_FALSE
+        )
+        colorBlendState = vk.VkPipelineColorBlendStateCreateInfo(
+            sType = vk.VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO,
+            attachmentCount = 1,
+            pAttachments = [blendAttachmentState]
+        )
+        opState = vk.VkStencilOpState(
+            #failOp = vk.VK_STENCIL_OP_KEEP,
+            #passOp = vk.VK_STENCIL_OP_KEEP,
+            compareOp = vk.VK_COMPARE_OP_ALWAYS
+        )
+        depthStencilState = vk.VkPipelineDepthStencilStateCreateInfo(
+            sType = vk.VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO,
+            depthTestEnable = vk.VK_TRUE,
+            depthWriteEnable = vk.VK_TRUE,
+            depthCompareOp = vk.VK_COMPARE_OP_LESS_OR_EQUAL,
+            #depthBoundsTestEnable = vk.VK_FALSE,
+            #stencilTestEnable = vk.VK_FALSE,
+            front = opState,
+            back = opState
+        )
+        viewportState = vk.VkPipelineViewportStateCreateInfo(
+            sType = vk.VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO,
+            viewportCount = 1,
+            scissorCount = 1,
+            flags = 0
+        )
+        multisampleState = vk.VkPipelineMultisampleStateCreateInfo(
+            sType = vk.VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO,
+            rasterizationSamples = vk.VK_SAMPLE_COUNT_1_BIT,
+            flags = 0
+        )
+        dynamicStateEnables = [vk.VK_DYNAMIC_STATE_VIEWPORT, vk.VK_DYNAMIC_STATE_SCISSOR]
+        dynamicState = vk.VkPipelineDynamicStateCreateInfo(
+            sType = vk.VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO,
+            dynamicStateCount = len(dynamicStateEnables),
+            pDynamicStates = dynamicStateEnables,
+            flags = 0
+        )
+        shaderStages = []
+        # Vertex shader
+        shaderStage = vk.VkPipelineShaderStageCreateInfo(
+            sType = vk.VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
+            stage = vk.VK_SHADER_STAGE_VERTEX_BIT,
+            module = vks.vulkantools.loadShader(self.getAssetPath() + "shaders/scenerendering/scene.vert.spv", self.device),
+            pName = "main"
+        )
+        shaderStages.append(shaderStage)
+        # Fragment shader
+        shaderStage = vk.VkPipelineShaderStageCreateInfo(
+            sType = vk.VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
+            stage = vk.VK_SHADER_STAGE_FRAGMENT_BIT,
+            module = vks.vulkantools.loadShader(self.getAssetPath() + "shaders/scenerendering/scene.frag.spv", self.device),
+            pName = "main"
+        )
+        shaderStages.append(shaderStage)
+        pipelineCreateInfo = vk.VkGraphicsPipelineCreateInfo(
+            sType = vk.VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO,
+            layout = self.scene.pipelineLayout,
+            renderPass = self.renderPass,
+            pVertexInputState = self.vertices['inputState'],
+            pInputAssemblyState = inputAssemblyState,
+            pRasterizationState = rasterizationState,
+            pColorBlendState = colorBlendState,
+            pMultisampleState = multisampleState,
+            pViewportState = viewportState,
+            pDepthStencilState = depthStencilState,
+            pDynamicState = dynamicState,
+            stageCount = len(shaderStages),
+            pStages = shaderStages,
+            flags = 0,
+            basePipelineIndex = -1,
+            basePipelineHandle = vk.VK_NULL_HANDLE
+        )
+        pipe = vk.vkCreateGraphicsPipelines(self.device, self.pipelineCache, 1, [pipelineCreateInfo], None)
+        try:
+            self.scene.pipelines['solid'] = pipe[0]
+        except TypeError:
+            self.scene.pipelines['solid'] = pipe
+        # Alpha blended pipeline
+        rasterizationState.cullMode = vk.VK_CULL_MODE_NONE
+        blendAttachmentState.blendEnable = vk.VK_TRUE
+        blendAttachmentState.colorBlendOp = vk.VK_BLEND_OP_ADD
+        blendAttachmentState.srcColorBlendFactor = vk.VK_BLEND_FACTOR_SRC_COLOR
+        blendAttachmentState.dstColorBlendFactor = vk.VK_BLEND_FACTOR_ONE_MINUS_SRC_COLOR
+        pipe = vk.vkCreateGraphicsPipelines(self.device, self.pipelineCache, 1, [pipelineCreateInfo], None)
+        try:
+            self.scene.pipelines['blending'] = pipe[0]
+        except TypeError:
+            self.scene.pipelines['blending'] = pipe
+        # Wire frame rendering pipeline
+        if self.deviceFeatures.fillModeNonSolid:
+            rasterizationState.cullMode = vk.VK_CULL_MODE_BACK_BIT
+            blendAttachmentState.blendEnable = vk.VK_FALSE
+            rasterizationState.polygonMode = vk.VK_POLYGON_MODE_LINE
+            rasterizationState.lineWidth = 1.0
+            pipe = vk.vkCreateGraphicsPipelines(self.device, self.pipelineCache, 1, [pipelineCreateInfo], None)
+            try:
+                self.scene.pipelines['wireframe'] = pipe[0]
+            except TypeError:
+                self.scene.pipelines['wireframe'] = pipe
+
+    def buildCommandBuffers(self):
+        cmdBufInfo = vk.VkCommandBufferBeginInfo(
+            sType = vk.VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO
+        )
+        clearValues = []
+        clearValue = vk.VkClearValue(
+            color = self.defaultClearColor
+        )
+        clearValues.append(clearValue)
+        clearValue = vk.VkClearValue(
+            depthStencil = [1.0, 0 ]
+        )
+        clearValues.append(clearValue)
+        offset = vk.VkOffset2D(x = 0, y = 0)
+        extent = vk.VkExtent2D(width = self.width, height = self.height)
+        renderArea = vk.VkRect2D(offset = offset, extent = extent)
+        renderPassBeginInfo = vk.VkRenderPassBeginInfo(
+            sType = vk.VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO,
+            pNext = None,
+            renderPass = self.renderPass,
+            renderArea = renderArea,
+            clearValueCount = 2,
+            pClearValues = clearValues,
+        )
+        for i in range(len(self.drawCmdBuffers)):
+            renderPassBeginInfo.framebuffer = self.frameBuffers[i]
+            vk.vkBeginCommandBuffer(self.drawCmdBuffers[i], cmdBufInfo)
+            vk.vkCmdBeginRenderPass(self.drawCmdBuffers[i], renderPassBeginInfo, vk.VK_SUBPASS_CONTENTS_INLINE)
+            viewport = vk.VkViewport(
+                height = float(self.height),
+                width = float(self.width),
+                minDepth = 0.0,
+                maxDepth = 1.0
+            )
+            vk.vkCmdSetViewport(self.drawCmdBuffers[i], 0, 1, [viewport])
+            # Update dynamic scissor state
+            offsetscissor = vk.VkOffset2D(x = 0, y = 0)
+            extentscissor = vk.VkExtent2D(width = self.width, height = self.height)
+            scissor = vk.VkRect2D(offset = offsetscissor, extent = extentscissor)
+            vk.vkCmdSetScissor(self.drawCmdBuffers[i], 0, 1, [scissor])
+
+            #self.scene.render(self.drawCmdBuffers[i], self.wireframe)
+            self.scene.render(self.drawCmdBuffers[i], True)
+            self.drawUI(self.drawCmdBuffers[i])
+            vk.vkCmdEndRenderPass(self.drawCmdBuffers[i])
+            vk.vkEndCommandBuffer(self.drawCmdBuffers[i])
 
     def prepare(self):
         super().prepare()
         self.setupVertexDescriptions()
         self.loadScene()
+        self.preparePipelines()
+        self.buildCommandBuffers()
+        self.prepared = True
+
+    def draw(self):
+        super().prepareFrame()
+        self.submitInfo.commandBufferCount = 1
+        # TODO try to avoid creating submitInfo at each frame
+        # need to get CData pointer on drawCmdBuffers[*]
+        # self.submitInfo.pCommandBuffers[0] = self.drawCmdBuffers[self.currentBuffer]
+        # vk.vkQueueSubmit(self.queue, 1, self.submitInfo, vk.VK_NULL_HANDLE)
+        submitInfo = vk.VkSubmitInfo(
+            sType = vk.VK_STRUCTURE_TYPE_SUBMIT_INFO,
+            pWaitDstStageMask = [ vk.VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT ],
+            pWaitSemaphores = [ self.semaphores['presentComplete'] ],
+            waitSemaphoreCount = 1,
+            signalSemaphoreCount = 1,
+            pSignalSemaphores = [ self.semaphores['renderComplete'] ],
+            pCommandBuffers = [ self.drawCmdBuffers[self.currentBuffer] ],
+            commandBufferCount = 1
+        )
+        vk.vkQueueSubmit(self.queue, 1, submitInfo, vk.VK_NULL_HANDLE)
+        super().submitFrame()
 
     def render(self):
         if not self.prepared:
