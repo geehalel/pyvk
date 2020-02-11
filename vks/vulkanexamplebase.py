@@ -41,7 +41,13 @@ if VK_USE_PLATFORM_XCB_KHR:
     #import vks.xkeysyms
     #import vks.xkkeys
     import vks.vulkankeycodes
-
+if VK_USE_PLATFORM_WIN32_KHR:
+    import win32api
+    import win32con
+    import win32gui
+    import win32console
+    import pywintypes
+    
 class VulkanExampleBase:
 
     def getAssetPath(self):
@@ -113,7 +119,7 @@ class VulkanExampleBase:
 
     def initSwapchain(self):
         if _WIN32:
-            self.swapChain.initSurface(self.windowInstance, self.window)
+            self.swapChain.initSurface(platformHandle=self.windowInstance, platformWindow=self.window)
         elif VK_USE_PLATFORM_ANDROID_KHR:
             self.swapChain.initSurface(self.androidApp.window)
         #elif VK_USE_PLATFORM_IOS_MVK or VK_USE_PLATFORM_MACOS_MVK:
@@ -429,7 +435,7 @@ Create one command buffer for each swap chain image and reuse for rendering
         self.gamePadState = {'axisLeft':glm.vec2(0.0), 'axisRight':glm.vec2(0.0)}
         self.mouseButtons = {'left': False, 'right': False, 'middle': False}
         self.UIOverlay = vks.vulkanuioverlay.UIOverlay()
-        if _WIN32 or VK_USE_PLATFORM_ANDROID_KHR or VK_USE_PLATFORM_WAYLAND_KHR or _DIRECT2DISPLAY:
+        if VK_USE_PLATFORM_ANDROID_KHR or VK_USE_PLATFORM_WAYLAND_KHR or _DIRECT2DISPLAY:
             import sys
             print('Platform not supported')
             sys.exit(1)
@@ -439,12 +445,18 @@ Create one command buffer for each swap chain image and reuse for rendering
             self.screen = None
             self.window = None
             self.atom_wm_delete_window = None
+        elif _WIN32:
+            self.windowInstance = None
+            
         # Ctor
         if not VK_USE_PLATFORM_ANDROID_KHR:
             # Check for a valid asset path
             if not os.path.exists(self.getAssetPath()):
                 if not _WIN32:
                     print("Error: Could not find asset path in ", self.getAssetPath())#, file=sys.stderr)
+                else:
+                    msg = "Could not locate asset path in \"" + self.getAssetPath() + "\" !"
+                    win32gui.MessageBox(None, msg, "pyvk -- Fatal error", win32con.MB_OK | win32con.MB_ICONERROR)
                 sys.exit(-1)
         self.settings['validation'] = enableValidation
         # Parse command line arguments
@@ -476,7 +488,13 @@ Create one command buffer for each swap chain image and reuse for rendering
 
         if VK_USE_PLATFORM_XCB_KHR:
             self.initxcbConnection()
-
+        if VK_USE_PLATFORM_WIN32_KHR:
+            # Enable console if validation is active
+            # Debug message callback will output to it
+            if self.settings['validation']:
+                self.setupConsole("Vulkan validation output")
+            self.setupDPIAwareness()
+            
     # use __del__ as Dtor
     def __del__(self):
         if self.swapChain:
@@ -579,15 +597,15 @@ Create one command buffer for each swap chain image and reuse for rendering
 
         semaphoreCreateInfo = vk.VkSemaphoreCreateInfo(sType=vk.VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO)
         # Create a semaphore used to synchronize image presentation
-	    # Ensures that the image is displayed before we start submitting new commands to the queu
+        # Ensures that the image is displayed before we start submitting new commands to the queu
         self.semaphores['presentComplete'] = vk.vkCreateSemaphore(self.device, semaphoreCreateInfo, None)
         # Create a semaphore used to synchronize command submission
-	    # Ensures that the image is not presented until all commands have been sumbitted and executed
+        # Ensures that the image is not presented until all commands have been sumbitted and executed
         self.semaphores['renderComplete'] = vk.vkCreateSemaphore(self.device, semaphoreCreateInfo, None)
 
         # Set up submit info structure
-	    # Semaphores will stay the same during application lifetime
-	    # Command buffer submission info is set by each example
+        # Semaphores will stay the same during application lifetime
+        # Command buffer submission info is set by each example
         self.submitInfo = vk.VkSubmitInfo(sType = vk.VK_STRUCTURE_TYPE_SUBMIT_INFO,
             pWaitDstStageMask = self.submitPipelineStages,
             waitSemaphoreCount = 1,
@@ -714,7 +732,25 @@ Create one command buffer for each swap chain image and reuse for rendering
     def intern_atom_helper(self, conn, only_if_exists, strname):
         cookie = self.xproto.InternAtom(only_if_exists, len(strname), strname)
         return cookie.reply()
-
+    
+    # win32 api stuff
+    def setupConsole(self, title):
+        try:
+            win32console.AllocConsole()
+        except:
+            return
+        win32console.AttachConsole(GetCurrentProcessId())
+        
+        sys.stdout = open("CONOUT$", "wt")
+        sys.stderr = open("CONOUT$", "wt")
+        win32console.SetConsoleTitle(self.title)
+    def setupDPIAwareness(self):
+        import ctypes
+        awareness = ctypes.c_int()
+        ctypes.windll.shcore.SetProcessDpiAwareness(2) # PROCESS_PER_MONITOR_DPI_AWARE
+        
+    def handleMessages(self, hWnd, Msg, wParam, lParam):
+        pass
 
     def setupWindow(self):
         if VK_USE_PLATFORM_XCB_KHR:
@@ -745,22 +781,92 @@ Create one command buffer for each swap chain image and reuse for rendering
             self.atom_wm_delete_window = self.intern_atom_helper(self.connection, False, "WM_DELETE_WINDOW")
             self.connection.core.ChangeProperty(xcffib.xproto.PropMode.Replace,
                 self.window, reply.atom, xcffib.xproto.Atom.ATOM, 32, 1,
-		        [self.atom_wm_delete_window.atom])
+                [self.atom_wm_delete_window.atom])
             windowTitle = self.getWindowTitle()
             self.connection.core.ChangeProperty(xcffib.xproto.PropMode.Replace,
                 self.window, xcffib.xproto.Atom.WM_NAME, xcffib.xproto.Atom.STRING, 8,
-		        len(windowTitle), windowTitle)
+                len(windowTitle), windowTitle)
 
             if self.settings['fullscreen']:
                 atom_wm_state = self.intern_atom_helper(self.connection, False, "_NET_WM_STATE")
                 atom_wm_fullscreen = self.intern_atom_helper(self.connection, False, "_NET_WM_STATE_FULLSCREEN")
                 self.connection.core.ChangeProperty(xcffib.xproto.PropMode.Replace,
                     self.window, atom_wm_state.atom, xcffib.xproto.Atom.ATOM, 32, 1,
-    		        [atom_wm_fullscreen.atom])
+                    [atom_wm_fullscreen.atom])
             self.connection.core.MapWindow(self.window)
             self.connection.flush()
             #self.xcbkeyboard = vks.xcb_keyboard.Keyboard(self.connection.setup, self.connection)
+        if VK_USE_PLATFORM_WIN32_KHR:
+            
+            win32gui.InitCommonControls()
+            self.windowInstance = win32api.GetModuleHandle(None)
+            wndClass = win32gui.WNDCLASS() # no WNDCLASSEX in pywin32
+            # wndClass.cbSize = sizeof(WNDCLASSEX);
+            wndClass.style = win32con.CS_HREDRAW | win32con.CS_VREDRAW
+            wndClass.lpfnWndProc = self.handleMessages
+            #wndClass.cbClsExtra = 0
+            wndClass.cbWndExtra = 0
+            wndClass.hInstance = self.windowInstance
+            wndClass.hIcon = win32gui.LoadIcon(None, win32con.IDI_APPLICATION);
+            wndClass.hCursor = win32api.LoadCursor(None, win32con.IDC_ARROW);
+            wndClass.hbrBackground = win32gui.GetStockObject(win32con.BLACK_BRUSH);
+            wndClass.lpszMenuName = "";
+            wndClass.lpszClassName = self.name;
+            # wndClass.hIconSm = LoadIcon(None, win32con.IDI_WINLOGO); # no small icons in WNDCLASS
 
+            if not win32gui.RegisterClass(wndClass):
+                print("Could not register window class!")
+                sys.exit(1)    
+            screenWidth = win32api.GetSystemMetrics(win32con.SM_CXSCREEN)
+            screenHeight = win32api.GetSystemMetrics(win32con.SM_CYSCREEN)
+            if self.settings['fullscreen']:
+                dmScreenSettings = pywintypes.DEVMODEType()
+                dmScreenSettings.dmPelsWidth = screenWidth
+                dmScreenSettings.dmPelsHeight = screenHeight
+                dmScreenSettings.dmBitsPerPel = 32
+                dmScreenSettings.dmFields = win32con.DM_BITSPERPEL | win32con.DM_PELSWIDTH | win32con.DM_PELSHEIGHT
+                if self.width != screenWidth and self.height != screenHeight:
+                    if win32api.ChangeDisplaySettings(dmScreenSettings, win32con.CDS_FULLSCREEN) != win32con.DISP_CHANGE_SUCCESSFUL:
+                        if (win32gui.MessageBox(None, "Fullscreen Mode not supported!\n Switch to window mode?", "Error", win32con.MB_YESNO | win32con.MB_ICONEXCLAMATION) == win32con.IDYES):
+                            self.settings['fullscreen'] = False
+                        else:
+                            return None
+            if self.settings['fullscreen']:
+                dwExStyle = win32con.WS_EX_APPWINDOW
+                dwStyle = win32con.WS_POPUP | win32con.WS_CLIPSIBLINGS | win32con.WS_CLIPCHILDREN
+            else:
+                dwExStyle = win32con.WS_EX_APPWINDOW | win32con.WS_EX_WINDOWEDGE
+                dwStyle = win32con.WS_OVERLAPPEDWINDOW | win32con.WS_CLIPSIBLINGS | win32con.WS_CLIPCHILDREN
+
+            
+            left = 0
+            top = 0
+            right =  screenWidth if self.settings['fullscreen'] else  self.width
+            bottom = screenHeight if self.settings['fullscreen'] else self.height
+            # AdjustWindowRectEx(&windowRect, dwStyle, FALSE, dwExStyle) # not supported
+            
+            self.window = win32gui.CreateWindowEx(0, self.name, self.title,
+                    dwStyle | win32con.WS_CLIPSIBLINGS | win32con.WS_CLIPCHILDREN,
+                    0, 0, right - left, bottom - top,
+                    None, None,
+                    self.windowInstance,
+                    None)
+            if not self.settings['fullscreen']:
+                # Center on screen
+                x = (win32api.GetSystemMetrics(win32con.SM_CXSCREEN) - right) // 2
+                y = (win32api.GetSystemMetrics(win32con.SM_CYSCREEN) - bottom) // 2
+                win32gui.SetWindowPos(self.window, 0, x, y, 0, 0, win32con.SWP_NOZORDER | win32con.SWP_NOSIZE)
+
+            if not self.window:
+                print("Could not create window!")
+                return None
+                sys.exit(1)
+            
+            win32gui.ShowWindow(self.window, win32con.SW_SHOW)
+            win32gui.SetForegroundWindow(self.window)
+            win32gui.SetFocus(self.window)
+            return self.window
+        
     # ImGui stuff
     def updateOverlay(self):
         if not self.settings['overlay']:
@@ -813,9 +919,39 @@ Create one command buffer for each swap chain image and reuse for rendering
          self.currentBuffer=self.swapChain.acquireNextImage(self.semaphores['presentComplete'], self.currentBuffer)
 
     def submitFrame(self):
-        self.swapChain.queuePresent(self.queue, self.currentBuffer, self.semaphores['renderComplete'])
+        try:
+            self.swapChain.queuePresent(self.queue, self.currentBuffer, self.semaphores['renderComplete'])
+        except vk.VkErrorOutOfDateKhr:
+            self.windowResize()
         vk.vkQueueWaitIdle(self.queue)
-
+        
+    def renderFrame(self):
+        tStart = time.monotonic()
+        if self._viewUpdated:
+            self._viewUpdated = False
+            self.viewChanged()
+        self.render()
+        self.frameCounter += 1
+        tEnd = time.monotonic()
+        tDiff = (tEnd - tStart) * 1.0E3
+        self.frameTimer = tDiff / 1000.0
+        self.camera.update(self.frameTimer)
+        if self.camera.moving():
+            self._viewUpdated = True
+        if not self.paused:
+            self.timer += self.timerSpeed * self.frameTimer
+            if self.timer > 1.0:
+                self.timer -= 1.0
+        fpsTimer = (tEnd - self.lastTimestamp) * 1.0E3
+        if fpsTimer > 1000.0:
+            if not self.settings['overlay']:
+                windowTitle = self.getWindowTitle()
+                win32gui.SetWindowText(windowTitle)
+            self.lastFPS = self.frameCounter * (1000.0 / fpsTimer)
+            self.frameCounter = 0
+            self.lastTimestamp = tEnd
+        self.updateOverlay()
+        
     def renderLoop(self):
         if self.benchmark.active:
             # TODO
@@ -823,6 +959,22 @@ Create one command buffer for each swap chain image and reuse for rendering
         self.destWidth = self.width
         self.destHeight = self.height
         self.lastTimestamp = time.monotonic()
+        if VK_USE_PLATFORM_WIN32_KHR:
+            quitMessageReceived = False
+            while  not quitMessageReceived:
+                msg = win32gui.PeekMessage(self.window, 0, 0, win32con.PM_REMOVE)
+                #print(msg)
+#                while msg:
+#                    tm = win32gui.TranslateMessage(msg[1])
+#                    #print(tm)
+#                    dm = win32gui.DispatchMessage(msg[1])
+#                    #print(dm)
+#                    if msg[0] == win32con.WM_QUIT:
+#                        quitMessageReceived = True
+#                        break
+#                    msg = win32gui.PeekMessage(self.window, 0, 0, win32con.PM_REMOVE)
+                if not win32gui.IsIconic(self.window):
+                    self.renderFrame()
         if VK_USE_PLATFORM_XCB_KHR:
             self.connection.flush()
             while not self.quit:
@@ -854,15 +1006,55 @@ Create one command buffer for each swap chain image and reuse for rendering
                         windowTitle = self.getWindowTitle()
                         self.connection.core.ChangeProperty(xcffib.xproto.PropMode.Replace,
                             self.window, xcffib.xproto.Atom.WM_NAME, xcffib.xproto.Atom.STRING, 8,
-            		        len(windowTitle), windowTitle)
+                            len(windowTitle), windowTitle)
                         self.connection.flush()
                     self.lastFPS = self.frameCounter * (1000.0 / fpsTimer)
                     self.frameCounter = 0
                     self.lastTimestamp = tEnd
                 self.updateOverlay()
+                
         if self.device != vk.VK_NULL_HANDLE:
             vk.vkDeviceWaitIdle(self.device)
 
+    def windowResize(self):
+        if not self.prepared:
+            return
+        self.prepared = False
+        vk.vkDeviceWaitIdle(self.device);
+
+        # Recreate swap chain
+        self.width = self.destWidth
+        self.height = self.destHeight
+        self.setupSwapChain()
+        # Recreate the frame buffers
+        vk.vkDestroyImageView(self.device, self.depthStencil['view'], None)
+        vk.vkDestroyImage(self.device, self.depthStencil['image'], None)
+        vk.vkFreeMemory(self.device, self.depthStencil['mem'], None)
+        self.setupDepthStencil()    
+        for i in range(len(self.frameBuffers)): 
+            vk.vkDestroyFramebuffer(self.device, self.frameBuffers[i], None)
+        self.setupFrameBuffer()
+        if self.width > 0.0 and self.height > 0.0:
+            if self.settings['overlay']: 
+                self.UIOverlay.resize(self.width, self.height)
+                pass
+            
+        # Command buffers need to be recreated as they may store
+        # references to the recreated frame buffer
+        self.destroyCommandBuffers()
+        self.createCommandBuffers()
+        self.buildCommandBuffers()
+
+        vk.vkDeviceWaitIdle(self.device);
+
+        if self.width > 0.0 and self.height > 0.0:
+            self.camera.updateAspectRatio(self.width / self.height)
+
+        # Notify derived class
+        self.windowResized()
+        self.viewChanged()
+
+        self.prepared = True
     # Virtual methods
     def getEnabledFeatures(self):
         return
@@ -871,6 +1063,8 @@ Create one command buffer for each swap chain image and reuse for rendering
     def keyPressed(self, evdetail, evstate):
         pass
     def viewChanged(self):
+        pass
+    def windowResized(self):
         pass
     def mouseMoved(self, x, y):
         return False

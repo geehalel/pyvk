@@ -39,10 +39,10 @@ class VulkanExample(vks.vulkanexamplebase.VulkanExampleBase):
         vk.vkDestroyBuffer(self.device, self.uniformBufferVS['buffer'], None)
         vk.vkFreeMemory(self.device, self.uniformBufferVS['memory'], None)
 
-		#vkDestroySemaphore(device, presentCompleteSemaphore, nullptr);
-		#vkDestroySemaphore(device, renderCompleteSemaphore, nullptr);
-		#for (auto& fence : waitFences)
-		#	vkDestroyFence(device, fence, nullptr);
+        #vkDestroySemaphore(device, presentCompleteSemaphore, nullptr);
+        #vkDestroySemaphore(device, renderCompleteSemaphore, nullptr);
+        #for (auto& fence : waitFences)
+        #   vkDestroyFence(device, fence, nullptr);
 
     def getCommandBuffer(self, begin):
         """
@@ -333,7 +333,7 @@ Note: There are still a few dynamic states that are not directly part of the pip
             lineWidth = 1.0
         )
         # Color blend state describes how blend factors are calculated (if used)
-		# We need one blend attachment state per color attachment (even if blending is not used
+        # We need one blend attachment state per color attachment (even if blending is not used
         blendAttachmentState = vk.VkPipelineColorBlendAttachmentState(
             colorWriteMask = 0xf,
             blendEnable = vk.VK_FALSE
@@ -344,7 +344,7 @@ Note: There are still a few dynamic states that are not directly part of the pip
             pAttachments = [blendAttachmentState]
         )
         # Viewport state sets the number of viewports and scissor used in this pipeline
-		# Note: This is actually overriden by the dynamic states (see below)
+        # Note: This is actually overriden by the dynamic states (see below)
         viewportState = vk.VkPipelineViewportStateCreateInfo(
             sType = vk.VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO,
             viewportCount = 1,
@@ -397,8 +397,8 @@ Note: There are still a few dynamic states that are not directly part of the pip
         # Input attribute bindings describe shader attribute locations and memory layouts
         vertexInputAttributs = []
         # These match the following shader layout (see triangle.vert):
-        #	layout (location = 0) in vec3 inPos;
-        #	layout (location = 1) in vec3 inColor;
+        #   layout (location = 0) in vec3 inPos;
+        #   layout (location = 1) in vec3 inColor;
         # Attribute location 0: Position
         vertexInputAttribut = vk.VkVertexInputAttributeDescription(
             binding = 0,
@@ -641,8 +641,10 @@ This allows to generate work upfront and from multiple threads, one of the bigge
         # Present the current buffer to the swap chain
         # Pass the semaphore signaled by the command buffer submission from the submit info as the wait semaphore for swap chain presentation
         # This ensures that the image is not presented to the windowing system until all commands have been submitted
-        self.swapChain.queuePresent(self.queue, self.currentBuffer, self.semaphores['renderComplete'])
-
+        try:
+            self.swapChain.queuePresent(self.queue, self.currentBuffer, self.semaphores['renderComplete'])
+        except vk.VkErrorOutOfDateKhr:
+            self.windowResize()
 
     def render(self):
         if not self.prepared:

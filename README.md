@@ -13,6 +13,10 @@ Moreover `imgui` integration is also effective (included in the `triangle` demo)
 
 Only the XCB platform binding has been made, so this only runs on `linux`. It has been tested under Fedora 30 and Ubuntu 18.04, using  both IGP Intel drivers and nvidia proprietary drivers.
 
+The Windows platform binding is in development. If you use [`thonny`](https://thonny.org/) for editing/running (I do), please note that the 32-bit Vulkan libraries
+are not tested. I had a pointer issue when using the 32bit default `thonny` interpreter (`GetPhysicalDeviceSurfaceSupportKHR`). Install
+a 64bit Python interpreter and point to it in `thonny`. Be aware to uninstall and reinstall every packages from `thonny` manager.
+
 ###### *FPS comparisons with the C++ original examples*
 These are Frames Per Second values computed in the program itself.
 They are read directly from the [screenshots](#screenshots). All FPS values here are stable during one execution, but there are some differences between executions (GPU Temp?). Min/Max frame times may also be added.

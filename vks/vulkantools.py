@@ -1,7 +1,10 @@
 # Copyright (C) 2019 by geehalel@gmail.com
 # This code is licensed under the MIT license (MIT) (http://opensource.org/licenses/MIT)
 
+import sys
+
 import vulkan as vk
+
 
 def physicalDeviceTypeString(devicetype):
     if devicetype == vk.VK_PHYSICAL_DEVICE_TYPE_OTHER:
@@ -18,10 +21,10 @@ def physicalDeviceTypeString(devicetype):
 def getSupportedDepthFormat(physicalDevice):
     depthFormats = [
                     vk.VK_FORMAT_D32_SFLOAT_S8_UINT,
-				    vk.VK_FORMAT_D32_SFLOAT,
-				    vk.VK_FORMAT_D24_UNORM_S8_UINT,
-				    vk.VK_FORMAT_D16_UNORM_S8_UINT,
-				    vk.VK_FORMAT_D16_UNORM
+                    vk.VK_FORMAT_D32_SFLOAT,
+                    vk.VK_FORMAT_D24_UNORM_S8_UINT,
+                    vk.VK_FORMAT_D16_UNORM_S8_UINT,
+                    vk.VK_FORMAT_D16_UNORM
                     ]
     for format in depthFormats:
         formatProps = vk.vkGetPhysicalDeviceFormatProperties(physicalDevice, format)
@@ -129,3 +132,8 @@ def setImageLayout(cmdBuffer, image, aspectMask, oldImageLayout, newImageLayout,
         layerCount = 1
     )
     setImageLayoutsubResource(cmdBuffer, image, oldImageLayout, newImageLayout, subresourceRange, srcStageMask, dstStageMask)
+
+def exitFatal(message, exitCode):
+    print(message + '(exit code ' + str(exitCode) +')')
+    sys.exit(1)
+        

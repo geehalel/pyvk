@@ -459,3 +459,8 @@ Prepare a separate pipeline for the UI overlay rendering decoupled from the main
         vk.vkDestroyDescriptorPool(self.device.logicalDevice, self.descriptorPool, None)
         vk.vkDestroyPipelineLayout(self.device.logicalDevice, self.pipelineLayout, None)
         vk.vkDestroyPipeline(self.device.logicalDevice, self.pipeline, None)
+    
+    def resize(self, width, height):
+        io = imgui.get_io() 
+        io.display_size = (width, height)
+        

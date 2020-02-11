@@ -5,6 +5,8 @@ import vulkan as vk
 
 from vks.vulkanglobals import *
 
+import vks.vulkantools
+
 class SwapChain:
     """
 Class wrapping access to the swap chain
@@ -63,12 +65,24 @@ see also https://github.com/gabdube/python-vulkan-triangle for surface managemen
                 connection = vk.ffi.cast('void*', connection._conn),
                 window = window)
             self.surface = pCreateXcbSurfaceKHR(instance=self.instance, pCreateInfo=surfaceCreateInfo, pAllocator=None)
-
+        if VK_USE_PLATFORM_WIN32_KHR:
+            platformHandle = kwargs['platformHandle']
+            platformWindow = kwargs['platformWindow']
+            pCreateWin32SurfaceKHR = vk.vkGetInstanceProcAddr(self.instance, "vkCreateWin32SurfaceKHR")
+            surfaceCreateInfo = vk.VkWin32SurfaceCreateInfoKHR(
+                sType = vk.VK_STRUCTURE_TYPE_WIN32_SURFACE_CREATE_INFO_KHR,
+                hinstance = platformHandle,
+                hwnd = platformWindow)
+            self.surface = pCreateWin32SurfaceKHR(instance=self.instance, pCreateInfo=surfaceCreateInfo, pAllocator = None)
+        
+        if self.surface is None:
+            vks.vulkantools.exitFatal("Could not create surface", -1)
+            
         # Get available queue family properties
         queueProps = vk.vkGetPhysicalDeviceQueueFamilyProperties(self.physicalDevice)
         # Iterate over each queue to learn whether it supports presenting:
-		# Find a queue with present support
-		# Will be used to present the swap chain images to the windowing system
+        # Find a queue with present support
+        # Will be used to present the swap chain images to the windowing system
 
         supportsPresent = []
         for i in range(len(queueProps)):
@@ -77,11 +91,23 @@ see also https://github.com/gabdube/python-vulkan-triangle for surface managemen
                 queueFamilyIndex = i,
                 surface = self.surface))
         # Search for a graphics and a present queue in the array of queue
-		# families, try to find one that supports both
+        # families, try to find one that supports both
         graphicsQueueNodeIndex = None
         presentQueueNodeIndex = None
 
         for i in range(len(queueProps)):
+#            print('properties for queue family ' + str(i) + ': ', end='')
+#            if (queueProps[i].queueFlags & vk.VK_QUEUE_GRAPHICS_BIT) != 0:
+#                print('GRAPHICS', end='')
+#            if (queueProps[i].queueFlags & vk.VK_QUEUE_COMPUTE_BIT) != 0:
+#                print(', COMPUTE', end='')
+#            if (queueProps[i].queueFlags & vk.VK_QUEUE_TRANSFER_BIT) != 0:
+#                print(', TRANSFER', end='')
+#            if (queueProps[i].queueFlags & vk.VK_QUEUE_SPARSE_BINDING_BIT) != 0:
+#                print(', SPARSE_BINDING', end='')
+#            if supportsPresent[i] == vk.VK_TRUE:
+#                 print(', SUPPORTS PRESENTATION', end='')
+#            print(', supportsPresent='+str(supportsPresent[i]))
             if (queueProps[i].queueFlags & vk.VK_QUEUE_GRAPHICS_BIT) != 0:
                 if graphicsQueueNodeIndex is None:
                     graphicsQueueNodeIndex = i
@@ -91,11 +117,13 @@ see also https://github.com/gabdube/python-vulkan-triangle for surface managemen
                     break
         if presentQueueNodeIndex is None:
             # If there's no queue that supports both present and graphics
-			# try to find a separate present queue
+            # try to find a separate present queue
             for i in range(len(queueProps)):
                 if supportsPresent[i] == vk.VK_TRUE:
                     presentQueueNodeIndex = i
                     break
+#        if VK_USE_PLATFORM_WIN32_KHR and presentQueueNodeIndex is None:   # is this a bug in Win32? look at the python code in sdl2_exmaple
+#            presentQueueNodeIndex = graphicsQueueNodeIndex
         # Exit if either a graphics or a presenting queue hasn't been found
         if graphicsQueueNodeIndex is None or presentQueueNodeIndex is None:
             vks.vulkantools.exitFatal("Could not find a graphics and/or presenting queue!", -1)
@@ -106,13 +134,13 @@ see also https://github.com/gabdube/python-vulkan-triangle for surface managemen
         self.queueNodeIndex = graphicsQueueNodeIndex
 
         # Get list of supported surface formats
-        surfaceFormats = self.fpGetPhysicalDeviceSurfaceFormatsKHR(self.physicalDevice, self.surface)
+        surfaceFormats = self.fpGetPhysicalDeviceSurfaceFormatsKHR(physicalDevice=self.physicalDevice, surface=self.surface)
         if (len(surfaceFormats) == 1) and (surfaceFormats[0].format == vk.VK_FORMAT_UNDEFINED):
             self.colorFormat = vk.VK_FORMAT_B8G8R8A8_UNORM
             self.colorSpace = surfaceFormats[0].colorSpace
         else:
             # iterate over the list of available surface format and
-			# check for the presence of VK_FORMAT_B8G8R8A8_UNORM
+            # check for the presence of VK_FORMAT_B8G8R8A8_UNORM
             found_B8G8R8A8_UNORM = False
             for surfaceFormat in surfaceFormats:
                 if surfaceFormat.format == vk.VK_FORMAT_B8G8R8A8_UNORM:
@@ -121,7 +149,7 @@ see also https://github.com/gabdube/python-vulkan-triangle for surface managemen
                     found_B8G8R8A8_UNORM = True
                     break
             # in case VK_FORMAT_B8G8R8A8_UNORM is not available
-			# select the first available color format
+            # select the first available color format
             if  not found_B8G8R8A8_UNORM:
                 self.colorFormat = surfaceFormats[0].format
                 self.colorSpace = surfaceFormats[0].colorSpace
@@ -144,7 +172,7 @@ Create the swapchain and get it's images with given width and height
         # If width (and height) equals the special value 0xFFFFFFFF, the size of the surface will be set by the swapchain
         swapchainExtent = (width, height)
         # If the surface size is defined, the swap chain size must match
-        if surfCaps.currentExtent.width == -1:
+        if surfCaps.currentExtent.width != -1:
             swapchainExtent = (surfCaps.currentExtent.width, surfCaps.currentExtent.height)
 
         # Select a present mode for the swapchain
