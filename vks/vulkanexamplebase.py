@@ -9,7 +9,6 @@ import platform
 
 import time # for perf_counter()
 
-
 logging.basicConfig(format='%(asctime)s,%(msecs)d %(levelname)-8s [%(filename)s:%(lineno)d] %(message)s',
     datefmt='%Y-%m-%d:%H:%M:%S',
     level=logging.DEBUG)
@@ -47,6 +46,7 @@ if VK_USE_PLATFORM_WIN32_KHR:
     import win32gui
     import win32console
     import pywintypes
+    import vks.vulkankeycodes
     
 class VulkanExampleBase:
 
@@ -749,9 +749,103 @@ Create one command buffer for each swap chain image and reuse for rendering
         awareness = ctypes.c_int()
         ctypes.windll.shcore.SetProcessDpiAwareness(2) # PROCESS_PER_MONITOR_DPI_AWARE
         
-    def handleMessages(self, hWnd, Msg, wParam, lParam):
-        pass
-
+    def handleMessages(self, hWnd, uMsg, wParam, lParam):
+        #print('handle: ', uMsg, wParam, lParam)
+        #if uMsg == win32con.WM_QUIT:
+        #    print('WM_QUIT in handleMessages', uMsg, wParam, lParam)
+        #return win32gui.DefWindowProc(hWnd, uMsg , wParam , lParam )
+        if uMsg == win32con.WM_DESTROY:
+            #print('WM_DESTROY')
+            win32gui.PostQuitMessage(0)
+        if uMsg == win32con.WM_CLOSE:
+            #print('WM_CLOSE', self.prepared)
+            self.prepared = False
+            win32gui.DestroyWindow(hWnd)
+#             rc = win32gui.PostQuitMessage(0)
+#             print(rc)
+#             if not rc:
+#                 print('PostQuitMessage failed', win32api.GetLastError())
+        elif uMsg == win32con.WM_PAINT:
+            hRgn = win32gui.CreateRectRgnIndirect(win32gui.GetWindowRect(self.window))
+            win32gui.ValidateRgn(self.window, hRgn)
+        elif uMsg == win32con.WM_SIZE:
+            #print('WM_SIZE', self.prepared)
+            if self.prepared and wParam != win32con.SIZE_MINIMIZED:
+                if (self._resizing) or ((wParam == win32con.SIZE_MAXIMIZED) or (wParam == win32con.SIZE_RESTORED)):
+                    self.destWidth = win32api.LOWORD(lParam)
+                    self.destHeight = win32api.HIWORD(lParam)
+                    self.windowResize()
+            #self.destWidth = win32api.LOWORD(lParam)
+            #self.destHeight = win32api.HIWORD(lParam)
+            #self.windowResize()
+        elif uMsg == win32con.WM_ENTERSIZEMOVE:
+            self._resizing = True
+        elif uMsg == win32con.WM_EXITSIZEMOVE:
+            self._resizing = False
+#        elif uMsg == win32con.WM_GETMINMAXINFO:
+#            print('WM_GETMINMAXINFO: ', lparam)
+#             LPMINMAXINFO minMaxInfo = (LPMINMAXINFO)lParam;
+#             minMaxInfo->ptMinTrackSize.x = 64;
+#             minMaxInfo->ptMinTrackSize.y = 64;
+        elif uMsg == win32con.WM_KEYDOWN:
+            #print('WM_KEYDOWN', wParam)
+            if wParam == vks.vulkankeycodes.Keycode.KEY_P:
+                self.paused = not(self.paused)
+            elif wParam == vks.vulkankeycodes.Keycode.KEY_F1:
+                if self.settings['overlay']:
+                    self.settings['overlay'] = not(self.settings['overlay'])
+            elif wParam == vks.vulkankeycodes.Keycode.KEY_ESCAPE:
+                #print('VK_ESCAPE')
+                win32gui.PostQuitMessage(0)
+            elif wParam == vks.vulkankeycodes.Keycode.KEY_W:
+                self.camera.keys['up'] = True
+            elif wParam == vks.vulkankeycodes.Keycode.KEY_S:
+                self.camera.keys['down'] = True
+            elif wParam == vks.vulkankeycodes.Keycode.KEY_A:
+                self.camera.keys['left'] = True
+            elif wParam == vks.vulkankeycodes.Keycode.KEY_D:
+                self.camera.keys['right'] = True
+        elif uMsg == win32con.WM_KEYUP:
+            if wParam == vks.vulkankeycodes.Keycode.KEY_W:
+                self.camera.keys['up'] = False
+            elif wParam == vks.vulkankeycodes.Keycode.KEY_S:
+                self.camera.keys['down'] = False
+            elif wParam == vks.vulkankeycodes.Keycode.KEY_A:
+                self.camera.keys['left'] = False
+            elif wParam == vks.vulkankeycodes.Keycode.KEY_D:
+                self.camera.keys['right'] = False
+            elif wParam == vks.vulkankeycodes.Keycode.KEY_ESCAPE:
+                self.quit = True
+            self.keyPressed(wParam)
+        elif uMsg == win32con.WM_LBUTTONDOWN:
+            self.mousePos = glm.vec2(float(win32api.LOWORD(lParam)), float(win32api.HIWORD(lParam)))
+            self.mouseButtons['left'] = True
+        elif uMsg == win32con.WM_RBUTTONDOWN:
+            self.mousePos = glm.vec2(float(win32api.LOWORD(lParam)), float(win32api.HIWORD(lParam)))
+            self.mouseButtons['right'] = True    
+        elif uMsg == win32con.WM_MBUTTONDOWN:
+            self.mousePos = glm.vec2(float(win32api.LOWORD(lParam)), float(win32api.HIWORD(lParam)))
+            self.mouseButtons['middle'] = True
+        elif uMsg == win32con.WM_LBUTTONUP:
+            self.mouseButtons['left'] = False
+        elif uMsg == win32con.WM_RBUTTONUP:
+            self.mouseButtons['right'] = False
+        elif uMsg == win32con.WM_MBUTTONUP:
+            self.mouseButtons['middle'] = False
+        elif uMsg == win32con.WM_MOUSEWHEEL:
+            #wheelDelta = GET_WHEEL_DELTA_WPARAM(wParam)
+            #print(hex(wParam))
+            #wheelDelta = win32api.HIWORD(wParam) # negative values not supported
+            wheelDelta = wParam >> 16
+            if wheelDelta > 0x8000:
+                wheelDelta = -(0x10000 - wheelDelta)
+            self.zoom += wheelDelta * 0.005 * self.zoomSpeed
+            self.camera.translate(glm.vec3(0.0, 0.0, float(wheelDelta) * 0.005 * self.zoomSpeed))
+            self._viewUpdated = True
+        elif uMsg == win32con.WM_MOUSEMOVE:
+            self.handleMouseMove(win32api.LOWORD(lParam), win32api.HIWORD(lParam))
+        else:
+            return win32gui.DefWindowProc(hWnd, uMsg , wParam , lParam )
     def setupWindow(self):
         if VK_USE_PLATFORM_XCB_KHR:
             value_mask = 0
@@ -861,6 +955,12 @@ Create one command buffer for each swap chain image and reuse for rendering
                 print("Could not create window!")
                 return None
                 sys.exit(1)
+                
+            # as AdjustWindowRect is not available, let set the client rect
+            (left, top, right, bottom) = win32gui.GetClientRect(self.window)
+            #print('Client rect: ', left, top, right, bottom, right - left, bottom - top)
+            self.destWidth = self.width = right - left
+            self.destHeight = self.height = bottom - top
             
             win32gui.ShowWindow(self.window, win32con.SW_SHOW)
             win32gui.SetForegroundWindow(self.window)
@@ -946,7 +1046,7 @@ Create one command buffer for each swap chain image and reuse for rendering
         if fpsTimer > 1000.0:
             if not self.settings['overlay']:
                 windowTitle = self.getWindowTitle()
-                win32gui.SetWindowText(windowTitle)
+                win32gui.SetWindowText(self.window, windowTitle)
             self.lastFPS = self.frameCounter * (1000.0 / fpsTimer)
             self.frameCounter = 0
             self.lastTimestamp = tEnd
@@ -962,18 +1062,32 @@ Create one command buffer for each swap chain image and reuse for rendering
         if VK_USE_PLATFORM_WIN32_KHR:
             quitMessageReceived = False
             while  not quitMessageReceived:
-                msg = win32gui.PeekMessage(self.window, 0, 0, win32con.PM_REMOVE)
-                #print(msg)
-#                while msg:
-#                    tm = win32gui.TranslateMessage(msg[1])
-#                    #print(tm)
-#                    dm = win32gui.DispatchMessage(msg[1])
-#                    #print(dm)
-#                    if msg[0] == win32con.WM_QUIT:
-#                        quitMessageReceived = True
-#                        break
-#                    msg = win32gui.PeekMessage(self.window, 0, 0, win32con.PM_REMOVE)
-                if not win32gui.IsIconic(self.window):
+                # b, msg = win32gui.PeekMessage(self.window, 0, 0, win32con.PM_REMOVE)
+                # retrieve any messages from current thread (to get WM_QuIT)
+                b, msg = win32gui.PeekMessage(0, 0, 0, win32con.PM_REMOVE)
+                # b, msg = win32gui.GetMessage(self.window, 0, 0) # nope, blocking
+                #print('msg type:', type(msg))
+                # WM_PAINT is returned by PeekMessage when no pending messages present
+                while b != 0 and msg[1] != win32con.WM_PAINT:
+                    #print('peek:', b, msg)
+                    win32gui.TranslateMessage(msg)
+                    #print('tr:', tm)
+                    win32gui.DispatchMessage(msg)
+                #    #print('dispatch:', dm)
+                    if msg[1] == win32con.WM_QUIT:
+                        #print('WM_QUIT:', msg)
+                        print('Bye.')
+                        quitMessageReceived = True
+                        break
+                    #b, msg = win32gui.PeekMessage(self.window, 0, 0, win32con.PM_REMOVE)
+                    # retrieve any messages from current thread (to get WM_QuIT)
+                    b, msg = win32gui.PeekMessage(0, 0, 0, win32con.PM_REMOVE)
+                    # b, msg = win32gui.GetMessage(self.window, 0, 0) # nope, blocking
+                #print('last peek:', b, msg)
+                #win32gui.TranslateMessage(msg)
+                #win32gui.DispatchMessage(msg)
+                if not win32gui.IsIconic(self.window) and not quitMessageReceived:
+                    #print('render frame')
                     self.renderFrame()
         if VK_USE_PLATFORM_XCB_KHR:
             self.connection.flush()
@@ -1060,7 +1174,7 @@ Create one command buffer for each swap chain image and reuse for rendering
         return
     def render(self):
         pass
-    def keyPressed(self, evdetail, evstate):
+    def keyPressed(self, evdetail, evstate=None):
         pass
     def viewChanged(self):
         pass
