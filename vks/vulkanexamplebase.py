@@ -68,12 +68,12 @@ class VulkanExampleBase:
             apiVersion=self.apiVersion)
 
         # Info added in realtix/vulkan
-        #extensions = vk.vkEnumerateInstanceExtensionProperties(None)
-        #extensions = [e.extensionName for e in extensions]
-        #print("Available extensions: %s\n" % extensions)
-        #layers = vk.vkEnumerateInstanceLayerProperties()
-        #layers = [l.layerName for l in layers]
-        #print("Available layers: %s\n" % layers)
+        extensions = vk.vkEnumerateInstanceExtensionProperties(None)
+        extensions = [e.extensionName for e in extensions]
+        print("Available extensions: %s\n" % extensions)
+        layers = vk.vkEnumerateInstanceLayerProperties()
+        layers = [l.layerName for l in layers]
+        print("Available layers: %s\n" % layers)
 
         instanceExtensions = [ vk.VK_KHR_SURFACE_EXTENSION_NAME ]
         if _WIN32:
@@ -237,8 +237,10 @@ Create one command buffer for each swap chain image and reuse for rendering
             format = self.depthFormat,
             samples = vk.VK_SAMPLE_COUNT_1_BIT,
             loadOp = vk.VK_ATTACHMENT_LOAD_OP_CLEAR,
-            storeOp = vk.VK_ATTACHMENT_STORE_OP_STORE,
-            stencilLoadOp = vk.VK_ATTACHMENT_LOAD_OP_CLEAR,
+            #storeOp = vk.VK_ATTACHMENT_STORE_OP_STORE,
+            #stencilLoadOp = vk.VK_ATTACHMENT_LOAD_OP_CLEAR,
+            storeOp = vk.VK_ATTACHMENT_STORE_OP_DONT_CARE,
+            stencilLoadOp = vk.VK_ATTACHMENT_LOAD_OP_DONT_CARE,
             stencilStoreOp = vk.VK_ATTACHMENT_STORE_OP_DONT_CARE,
             initialLayout = vk.VK_IMAGE_LAYOUT_UNDEFINED,
             finalLayout = vk.VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL)
@@ -268,10 +270,13 @@ Create one command buffer for each swap chain image and reuse for rendering
         dependency = vk.VkSubpassDependency(
             srcSubpass = vk.VK_SUBPASS_EXTERNAL,
             dstSubpass = 0,
-            srcStageMask = vk.VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT,
+            #srcStageMask = vk.VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT,
+            srcStageMask = vk.VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
             dstStageMask = vk.VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
-            srcAccessMask = vk.VK_ACCESS_MEMORY_READ_BIT,
-            dstAccessMask = vk.VK_ACCESS_COLOR_ATTACHMENT_READ_BIT | vk.VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
+            #srcAccessMask = vk.VK_ACCESS_MEMORY_READ_BIT,
+            #dstAccessMask = vk.VK_ACCESS_COLOR_ATTACHMENT_READ_BIT | vk.VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
+            srcAccessMask = 0,
+            dstAccessMask = vk.VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
             dependencyFlags = vk.VK_DEPENDENCY_BY_REGION_BIT
         )
         dependencies.append(dependency)
@@ -280,8 +285,10 @@ Create one command buffer for each swap chain image and reuse for rendering
             dstSubpass = vk.VK_SUBPASS_EXTERNAL,
             srcStageMask = vk.VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
             dstStageMask = vk.VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT,
-            srcAccessMask = vk.VK_ACCESS_COLOR_ATTACHMENT_READ_BIT | vk.VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
-            dstAccessMask = vk.VK_ACCESS_MEMORY_READ_BIT,
+            #srcAccessMask = vk.VK_ACCESS_COLOR_ATTACHMENT_READ_BIT | vk.VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
+            #dstAccessMask = vk.VK_ACCESS_MEMORY_READ_BIT,
+            srcAccessMask = vk.VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
+            dstAccessMask = 0,
             dependencyFlags = vk.VK_DEPENDENCY_BY_REGION_BIT
         )
         dependencies.append(dependency)

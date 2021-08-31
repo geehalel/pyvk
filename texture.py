@@ -136,14 +136,14 @@ class VulkanExample(vks.vulkanexamplebase.VulkanExampleBase):
         self.updateUniformBuffers()
 
     def updateUniformBuffers(self):
-        self.uboVS['projection'] = glm.perspective(glm.radians(60.0), self.width / self.height, 0.001, 256.0)
-        view = glm.translate(glm.mat4(1.0), glm.vec3(0.0, 0.0, self.zoom))
+        self.uboVS['projection'] = glm.transpose(glm.perspectiveRH_ZO(glm.radians(60.0), self.width / self.height, 0.001, 256.0))
+        view = glm.transpose(glm.translate(glm.mat4(1.0), glm.vec3(0.0, 0.0, self.zoom)))
         self.uboVS['model'] = view * glm.translate(glm.mat4(1.0), self.cameraPos)
         self.uboVS['model'] = glm.rotate(self.uboVS['model'], glm.radians(self.rotation.x), glm.vec3(1.0, 0.0, 0.0))
         self.uboVS['model'] = glm.rotate(self.uboVS['model'], glm.radians(self.rotation.y), glm.vec3(0.0, 1.0, 0.0))
         self.uboVS['model'] = glm.rotate(self.uboVS['model'], glm.radians(self.rotation.z), glm.vec3(0.0, 0.0, 1.0))
         self.uboVS['viewPos'] = glm.vec4(0.0, 0.0, -self.zoom, 0.0)
-
+        
         uboVSSize = sum([glm.sizeof(ubo) for ubo in self.uboVS.values()])
         uboVSBuffer = np.concatenate((
             np.array(self.uboVS['projection']).flatten(order='C'),

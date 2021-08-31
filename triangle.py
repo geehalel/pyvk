@@ -1,11 +1,21 @@
+#!/usr/bin/python3
+
 # Copyright (C) 2019 by geehalel@gmail.com
 # This code is licensed under the MIT license (MIT) (http://opensource.org/licenses/MIT)
+
+# debug with renderdoc
+# lauch python app with
+#  LD_PRELOAD=/usr/lib/librenderdoc.so python3 triangle.py
+# the renderdoc overlay should appear in the application (F12 to capture frame)
+# in renderdoc open File->Attach to running instance
+# select python instance and capture frames with F12 in the app
 
 import vulkan as vk
 import vks.vulkanexamplebase
 import vks.vulkanglobals
 import glm
 import numpy as np
+import cffi
 
 import array
 
@@ -24,6 +34,7 @@ class VulkanExample(vks.vulkanexamplebase.VulkanExampleBase):
         self.title = "Vulkan Example - Basic indexed triangle"
         # uncomment for imgui support
         self.settings['overlay'] = True
+        self.ffi = cffi.FFI()
 
     def __del__(self):
         vk.vkDestroyPipeline(self.device, self.pipeline, None)
@@ -117,6 +128,7 @@ Uses a fence to ensure command buffer has finished executing before deleting it
             # Request a host visible memory type that can be used to copy our data to
             # Also request it to be coherent, so that writes are visible to the GPU right after unmapping the buffer
             memReqs = vk.vkGetBufferMemoryRequirements(self.device, stagingBuffers['vertices']['buffer'])
+            #print(memReqs.size)
             memAlloc = vk.VkMemoryAllocateInfo(
                 sType = vk.VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO,
                 allocationSize = memReqs.size,
@@ -125,13 +137,20 @@ Uses a fence to ensure command buffer has finished executing before deleting it
             stagingBuffers['vertices']['memory'] = vk.vkAllocateMemory(self.device, memAlloc, None)
             data = vk.vkMapMemory(self.device, stagingBuffers['vertices']['memory'], 0, memAlloc.allocationSize, 0)
             #memcpy
-            # print(type(data), len(data)) # <class '_cffi_backend.buffer'>
+            #np.copyto(np.array(data, copy=False),vertexBuffer.flatten(order='C').view(dtype=np.uint8), casting='no')
+            #print(type(data), len(data)) # <class '_cffi_backend.buffer'>
             # should resize with nvidia drivers as data is greater than required
             #datawrapper = np.resize(np.array(data, copy=False), vertexBufferSize)
             #np.copyto(datawrapper,vertexBuffer.flatten(order='C').view(dtype=np.uint8), casting='no')
-            datawrapper = np.array(data, copy=False)
-            vbuf = np.resize(vertexBuffer.flatten(order='C').view(dtype=np.uint8), memReqs.size)
-            np.copyto(datawrapper, vbuf, casting='no')
+            #datawrapper = np.array(data, copy=False)
+            #vbuf = np.resize(vertexBuffer.flatten(order='C').view(dtype=np.uint8), memReqs.size)
+            #vbuf = vertexBuffer.flatten(order='C').view(dtype=np.uint8)
+            #vbuf.resize(memReqs.size)
+            #print(vbuf)
+            #np.copyto(datawrapper, vbuf, casting='no')
+            vbuf = vertexBuffer.flatten(order='C').tobytes()
+            self.ffi.memmove(data, vbuf, len(vbuf))
+            #print(data[:])
             vk.vkUnmapMemory(self.device, stagingBuffers['vertices']['memory'])
             vk.vkBindBufferMemory(self.device, stagingBuffers['vertices']['buffer'], stagingBuffers['vertices']['memory'], 0)
 
@@ -173,9 +192,13 @@ Uses a fence to ensure command buffer has finished executing before deleting it
             #print(type(data)) # <class '_cffi_backend.buffer'>
             #datawrapper = np.resize(np.array(data, copy=False), indexBufferSize)
             #np.copyto(datawrapper, indexBuffer.flatten(order='C').view(dtype=np.uint8), casting='no')
-            datawrapper = np.array(data, copy=False)
-            vbuf = np.resize(indexBuffer.flatten(order='C').view(dtype=np.uint8), memReqs.size)
-            np.copyto(datawrapper, vbuf, casting='no')
+            #datawrapper = np.array(data, copy=False)
+            #vbuf = np.resize(indexBuffer.flatten(order='C').view(dtype=np.uint8), memReqs.size)
+            #vbuf = indexBuffer.flatten(order='C').view(dtype=np.uint8)
+            #vbuf.resize(memReqs.size)
+            #np.copyto(datawrapper, vbuf, casting='no')
+            vbuf = indexBuffer.flatten(order='C').tobytes()
+            self.ffi.memmove(data, vbuf, len(vbuf))
             vk.vkUnmapMemory(self.device, stagingBuffers['indices']['memory'])
             vk.vkBindBufferMemory(self.device, stagingBuffers['indices']['buffer'], stagingBuffers['indices']['memory'], 0)
 
@@ -256,8 +279,12 @@ Single uniforms like in OpenGL are no longer present in Vulkan. All Shader unifo
         self.updateUniformBuffers()
 
     def updateUniformBuffers(self):
-        self.uboVS['projectionMatrix'] = glm.perspective(glm.radians(60.0), self.width / self.height, 0.1, 256.0)
-        self.uboVS['viewMatrix'] = glm.translate(glm.mat4(1.0), glm.vec3(0.0, 0.0, self.zoom))
+        # see https://matthewwellings.com/blog/the-new-vulkan-coordinate-system/
+        #vulk=glm.mat4((1,0,0,0),(0,-1,0,0),(0,0,0.5,0),(0,0,0.5,1))
+        #self.uboVS['projectionMatrix'] = vulk*glm.perspective(glm.radians(60.0), self.width / self.height, 0.1, 256.0)
+        #self.uboVS['projectionMatrix'] = glm.perspectiveRH_ZO(glm.radians(60.0), self.width / self.height, 0.1, 256.0)
+        self.uboVS['projectionMatrix'] = glm.transpose(glm.perspectiveRH_ZO(glm.radians(60.0), self.width / self.height, 0.1, 256.0))
+        self.uboVS['viewMatrix'] = glm.transpose(glm.translate(glm.mat4(1.0), glm.vec3(0.0, 0.0, self.zoom)))
         self.uboVS['modelMatrix'] = glm.mat4(1.0)
         self.uboVS['modelMatrix'] = glm.rotate(self.uboVS['modelMatrix'], glm.radians(self.rotation.x), glm.vec3(1.0, 0.0, 0.0))
         self.uboVS['modelMatrix'] = glm.rotate(self.uboVS['modelMatrix'], glm.radians(self.rotation.y), glm.vec3(0.0, 1.0, 0.0))
@@ -565,7 +592,7 @@ This allows to generate work upfront and from multiple threads, one of the bigge
                 framebuffer = self.frameBuffers[i]
             )
             # wait this buffer to be released
-            vk.vkWaitForFences(self.device, 1, [self.waitFences[i]], vk.VK_TRUE, vk.UINT64_MAX)
+            #vk.vkWaitForFences(self.device, 1, [self.waitFences[i]], vk.VK_TRUE, vk.UINT64_MAX)
             # rebuild this buffer
             vk.vkBeginCommandBuffer(self.drawCmdBuffers[i], cmdBufInfo)
             # Start the first sub pass specified in our default render pass setup by the base class

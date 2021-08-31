@@ -8,6 +8,9 @@ import numpy as np
 
 import vks.vulkantools
 import vks.vulkanbuffer
+import cffi
+
+ffi=cffi.FFI()
 
 class UIOverlay:
     def __init__(self):
@@ -346,7 +349,7 @@ Prepare a separate pipeline for the UI overlay rendering decoupled from the main
             self.vertexBuffer = self.device.createvksBuffer(vk.VK_BUFFER_USAGE_VERTEX_BUFFER_BIT, vk.VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT, vertexBufferSize)
             self.vertexCount = imDrawData.total_vtx_count
             self.vertexBuffer.unmap()
-            self.vertexBuffer.map()
+            #self.vertexBuffer.map()
             updateCmdBuffers = True
         # Index buffer
         if self.indexBuffer.buffer == vk.VK_NULL_HANDLE or self.indexCount != imDrawData.total_idx_count:
@@ -355,7 +358,7 @@ Prepare a separate pipeline for the UI overlay rendering decoupled from the main
             self.indexBuffer = self.device.createvksBuffer(vk.VK_BUFFER_USAGE_INDEX_BUFFER_BIT, vk.VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT, indexBufferSize)
             self.indexCount = imDrawData.total_idx_count
             self.indexBuffer.unmap()
-            self.indexBuffer.map()
+            #self.indexBuffer.map()
             updateCmdBuffers = True
         #print(vertexBufferSize, self.vertexBuffer.size)
         # TODO allocate whole array (sum([size(buf) for buf in commands_lists]) or total_vtx_count?)
@@ -381,29 +384,36 @@ Prepare a separate pipeline for the UI overlay rendering decoupled from the main
         # indexbufferwrapper = np.array(self.indexBuffer.mapped, copy=False)
         # np.copyto(indexbufferwrapper, indexarray, casting='no')
 
-        vertexdatawrapper = vks.vulkanbuffer.DataWrapper()
-        # vertexbufferwrapper = vks.vulkanbuffer.DataWrapper()
-        vertexbufferwrapper = np.array(self.vertexBuffer.mapped, copy=False)
+        #vertexdatawrapper = vks.vulkanbuffer.DataWrapper()
+        ## vertexbufferwrapper = vks.vulkanbuffer.DataWrapper()
+        #vertexbufferwrapper = np.array(self.vertexBuffer.mapped, copy=False)
         vertexbufferindex = 0
-        indexdatawrapper = vks.vulkanbuffer.DataWrapper()
-        # indexbufferwrapper = vks.vulkanbuffer.DataWrapper()
-        indexbufferwrapper = np.array(self.indexBuffer.mapped, copy=False)
+        #indexdatawrapper = vks.vulkanbuffer.DataWrapper()
+        ## indexbufferwrapper = vks.vulkanbuffer.DataWrapper()
+        #indexbufferwrapper = np.array(self.indexBuffer.mapped, copy=False)
         indexbufferindex = 0
-        # indexarray = np.empty(shape = (0,), dtype = np.uint8)
+        ## indexarray = np.empty(shape = (0,), dtype = np.uint8)
         for i in range(len(imDrawData.commands_lists)):
             cmd_list = imDrawData.commands_lists[i]
-            vertexdatawrapper.__array_interface__['shape'] = (cmd_list.vtx_buffer_size * imgui.vertex_buffer_vertex_size(),)
-            vertexdatawrapper.__array_interface__['data'] = (cmd_list.vtx_buffer_data, False)
-            #vertexbufferwrapper.__array_interface__['shape'] = (cmd_list.vtx_buffer_size * imgui.vertex_buffer_vertex_size(),)
-            #vertexbufferwrapper.__array_interface__['data'] = (self.vertexBuffer.mapped[vertexbufferindex], True)
-            np.copyto(vertexbufferwrapper[vertexbufferindex:vertexbufferindex+(cmd_list.vtx_buffer_size * imgui.vertex_buffer_vertex_size())], vertexdatawrapper, casting='no')
+            #print(type(ffi.cast("void *", cmd_list.vtx_buffer_data)))
+            #print("cmd", i, "vtx",  cmd_list.vtx_buffer_size, imgui.vertex_buffer_vertex_size(), vertexbufferindex)
+            self.vertexBuffer.map(cmd_list.vtx_buffer_size * imgui.vertex_buffer_vertex_size(), vertexbufferindex)
+            ffi.memmove(self.vertexBuffer.mapped, ffi.cast("void *", cmd_list.vtx_buffer_data), cmd_list.vtx_buffer_size * imgui.vertex_buffer_vertex_size())
+            self.vertexBuffer.unmap()
+            ##vertexbufferwrapper.__array_interface__['shape'] = (cmd_list.vtx_buffer_size * imgui.vertex_buffer_vertex_size(),)
+            ##vertexbufferwrapper.__array_interface__['data'] = (self.vertexBuffer.mapped[vertexbufferindex], True)
+            #np.copyto(vertexbufferwrapper[vertexbufferindex:vertexbufferindex+(cmd_list.vtx_buffer_size * imgui.vertex_buffer_vertex_size())], vertexdatawrapper, casting='no')
             vertexbufferindex += cmd_list.vtx_buffer_size * imgui.vertex_buffer_vertex_size()
-
-            indexdatawrapper.__array_interface__['shape'] = (cmd_list.idx_buffer_size * imgui.index_buffer_index_size(),)
-            indexdatawrapper.__array_interface__['data'] = (cmd_list.idx_buffer_data, False)
-            #indexbufferwrapper.__array_interface__['shape'] = (cmd_list.idx_buffer_size * imgui.index_buffer_index_size(),)
-            #indexbufferwrapper.__array_interface__['data'] = (self.indexBuffer.mapped + indexbufferindex, True)
-            np.copyto(indexbufferwrapper[indexbufferindex:indexbufferindex+(cmd_list.idx_buffer_size * imgui.index_buffer_index_size())], indexdatawrapper, casting='no')
+            
+            #print("cmd", i, "idx",  cmd_list.idx_buffer_size, imgui.index_buffer_index_size(), indexbufferindex)
+            self.indexBuffer.map(cmd_list.idx_buffer_size * imgui.index_buffer_index_size(), indexbufferindex)
+            ffi.memmove(self.indexBuffer.mapped, ffi.cast("void *", cmd_list.idx_buffer_data), cmd_list.idx_buffer_size * imgui.index_buffer_index_size())
+            self.indexBuffer.unmap()
+            #indexdatawrapper.__array_interface__['shape'] = (cmd_list.idx_buffer_size * imgui.index_buffer_index_size(),)
+            #indexdatawrapper.__array_interface__['data'] = (cmd_list.idx_buffer_data, False)
+            ##indexbufferwrapper.__array_interface__['shape'] = (cmd_list.idx_buffer_size * imgui.index_buffer_index_size(),)
+            ##indexbufferwrapper.__array_interface__['data'] = (self.indexBuffer.mapped + indexbufferindex, True)
+            #np.copyto(indexbufferwrapper[indexbufferindex:indexbufferindex+(cmd_list.idx_buffer_size * imgui.index_buffer_index_size())], indexdatawrapper, casting='no')
             indexbufferindex += cmd_list.idx_buffer_size * imgui.index_buffer_index_size()
 
         self.vertexBuffer.flush()
@@ -433,7 +443,9 @@ Prepare a separate pipeline for the UI overlay rendering decoupled from the main
 
         offsets = [0]
         vk.vkCmdBindVertexBuffers(commandBuffer, 0, 1, [self.vertexBuffer.buffer], offsets)
-        vk.vkCmdBindIndexBuffer(commandBuffer, self.indexBuffer.buffer, 0, vk.VK_INDEX_TYPE_UINT16)
+        #vk.vkCmdBindIndexBuffer(commandBuffer, self.indexBuffer.buffer, 0, vk.VK_INDEX_TYPE_UINT16)
+        # since https://github.com/pyimgui/pyimgui/blob/master/config-cpp/py_imconfig.h
+        vk.vkCmdBindIndexBuffer(commandBuffer, self.indexBuffer.buffer, 0, vk.VK_INDEX_TYPE_UINT32)
 
         for i in range(len(imDrawData.commands_lists)):
             cmd_list = imDrawData.commands_lists[i]

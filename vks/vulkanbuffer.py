@@ -3,7 +3,8 @@
 
 import vulkan as vk
 import numpy as np
-
+import cffi
+ffi=cffi.FFI()
 class DataWrapper:
     def __init__(self):
         self.__array_interface__ = {'shape': (1,), 'typestr': '|u1', 'version': 3}
@@ -73,14 +74,16 @@ Copies the specified data to the mapped buffer
         """
         # TODO find another way to memcpy
         assert(self.mapped is not None)
-        memorywrapper = np.array(self.mapped, copy=False)
-        #databuf = np.resize(np.frombuffer(data, dtype=np.uint8), size)
-        #databuf = np.frombuffer(data, dtype = np.uint8)
-        databuf = DataWrapper()
-        databuf.__array_interface__['shape'] = (size,)
-        #databuf.__array_interface__['data'] = (id(data), False)
-        databuf.__array_interface__['data'] = data
-        np.copyto(memorywrapper[:size], databuf, casting='no')
+        #memorywrapper = np.array(self.mapped, copy=False)
+        ##databuf = np.resize(np.frombuffer(data, dtype=np.uint8), size)
+        ##databuf = np.frombuffer(data, dtype = np.uint8)
+        #databuf = DataWrapper()
+        #databuf.__array_interface__['shape'] = (size,)
+        ##databuf.__array_interface__['data'] = (id(data), False)
+        #databuf.__array_interface__['data'] = data
+        #np.copyto(memorywrapper[:size], databuf, casting='no')
+        ffi.memmove(self.mapped, data, size)
+        
 
     def flush(self, size = vk.VK_WHOLE_SIZE, offset = 0):
         """
